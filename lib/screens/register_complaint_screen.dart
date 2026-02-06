@@ -1,86 +1,115 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
+import 'package:provider/provider.dart';
 import '../models/complaint.dart';
 import '../services/complaint_service.dart';
 
 class RegisterComplaintScreen extends StatefulWidget {
-  final String customerPhone;
-  final String customerName;
-
-  const RegisterComplaintScreen({
-    super.key,
-    required this.customerPhone,
-    required this.customerName,
-  });
+  final String phoneNumber;
+  const RegisterComplaintScreen({super.key, required this.phoneNumber});
 
   @override
   State<RegisterComplaintScreen> createState() => _RegisterComplaintScreenState();
 }
 
-class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> {
+class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   final _formKey = GlobalKey<FormState>();
-  final ComplaintService _complaintService = ComplaintService();
-  
-  String _flatNumber = '';
-  String _buildingName = '';
-  String _complaintType = '';
-  String _description = '';
-  
-  final List<String> _buildingOptions = [
-    'Building A', 'Building B', 'Building C', 'Building D', 'Building E',
-  ];
-  
-  final List<String> _complaintOptions = [
-    'AC not cooling', 'Water leakage', 'Electrical issue', 'Plumbing problem',
-    'Carpentry work', 'Painting required', 'Cleaning needed', 'Other',
-  ];
-  
-  bool _isSubmitting = false;
 
-  Future<void> _submitComplaint() async {
+  String _flat = '';
+  String? _selectedBuilding;
+  String? _selectedType;
+  String _desc = '';
+  
+  final TextEditingController _manualBuildingController = TextEditingController();
+  final TextEditingController _manualTypeController = TextEditingController();
+  
+  bool _isOtherBuilding = false;
+  bool _isOtherType = false;
+  bool _loading = false;
+
+  final List<String> _complaintTypes = ["Water leakage", "Low cooling", "Smell coming from AC", "Sound coming from AC", "Cleaning/Service", "New rent out", "Low air speed", "Low fan speed", "AC fan not working", "Others"];
+  final List<String> _buildings = List.generate(26, (i) => "Building ${i + 1}")..add("Others");
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  // DIALOG: Allows customer to close their own complaint
+  void _showCustomerCloseDialog(BuildContext context, ComplaintService service, Complaint c) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Close Complaint?"),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: "Reason (e.g., Problem solved)",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              // FIX: Save customer note in standbyReason instead of description
+              service.updateComplaint(c.copyWith(
+                status: "Closed by Customer",
+                standbyReason: controller.text, 
+              ));
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Complaint Closed")));
+            },
+            child: const Text("CONFIRM CLOSE", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    
     _formKey.currentState!.save();
-    setState(() => _isSubmitting = true);
-    
+
+    String finalBuilding = _isOtherBuilding ? _manualBuildingController.text : (_selectedBuilding ?? '');
+    String finalType = _isOtherType ? _manualTypeController.text : (_selectedType ?? '');
+
+    setState(() => _loading = true);
     try {
-      String complaintId = 'COMP${DateTime.now().millisecondsSinceEpoch}';
-      
-      Complaint complaint = Complaint(
-        id: complaintId,
-        customerPhone: widget.customerPhone,
-        customerName: widget.customerName,
-        address: '$_buildingName, Flat $_flatNumber',
-        problemDescription: _description.isNotEmpty ? _description : _complaintType,
-        category: _complaintType,
+      final service = Provider.of<ComplaintService>(context, listen: false);
+      final c = Complaint(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        customerPhone: widget.phoneNumber.trim(),
+        customerName: "Customer",
+        address: "$finalBuilding, $_flat",
+        description: _desc, 
+        category: finalType,
         createdAt: DateTime.now(),
         status: 'Pending',
         priority: 'Medium',
-        flatNumber: _flatNumber,
-        buildingName: _buildingName,
-        complaintType: _complaintType,
-        description: _description,
+        flatNumber: _flat,
+        buildingName: finalBuilding,
+        complaintType: finalType,
+        standbyReason: '',
+        technicianName: 'Unassigned',
+        isDeleted: false,
         imageUrls: [],
       );
       
-      await _complaintService.addComplaintWithId(complaint);
-      
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Complaint registered successfully!'), backgroundColor: Colors.green),
-      );
-      
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) Navigator.pop(context);
-      });
-      
+      await service.addComplaintWithId(c);
+      _formKey.currentState!.reset();
+      _manualBuildingController.clear();
+      _manualTypeController.clear();
+      _tabController.animateTo(1);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Complaint Registered!")));
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
-      if (mounted) setState(() => _isSubmitting = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -88,73 +117,155 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Register Complaint'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+        title: Text("Portal: ${widget.phoneNumber}"),
+        bottom: TabBar(
+          controller: _tabController, 
+          tabs: const [Tab(text: "New Request"), Tab(text: "My Status")]
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(15),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Your Information', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 10),
-                      Text('Name: ${widget.customerName}'),
-                      Text('Phone: ${widget.customerPhone}'),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextFormField(
-                decoration: const InputDecoration(labelText: 'Flat Number*', prefixIcon: Icon(Icons.home), border: OutlineInputBorder()),
-                validator: (value) => (value == null || value.isEmpty) ? 'Please enter flat number' : null,
-                onSaved: (value) => _flatNumber = value ?? '',
-              ),
-              const SizedBox(height: 20),
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: 'Building Name*', prefixIcon: Icon(Icons.apartment), border: OutlineInputBorder()),
-                value: _buildingName.isEmpty ? null : _buildingName,
-                items: _buildingOptions.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
-                onChanged: (value) => setState(() => _buildingName = value!),
-                validator: (value) => (value == null) ? 'Select building' : null,
-              ),
-              const SizedBox(height: 20),
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: 'Complaint Type*', prefixIcon: Icon(Icons.report_problem), border: OutlineInputBorder()),
-                value: _complaintType.isEmpty ? null : _complaintType,
-                items: _complaintOptions.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                onChanged: (value) => setState(() => _complaintType = value!),
-                validator: (value) => (value == null) ? 'Select type' : null,
-              ),
-              const SizedBox(height: 20),
-              TextFormField(
-                decoration: const InputDecoration(labelText: 'Description (Optional)', prefixIcon: Icon(Icons.description), border: OutlineInputBorder()),
-                maxLines: 3,
-                onSaved: (value) => _description = value ?? '',
-              ),
-              const SizedBox(height: 30),
-              ElevatedButton(
-                onPressed: _isSubmitting ? null : _submitComplaint,
-                style: ElevatedButton.styleFrom(padding: const EdgeInsets.all(18), backgroundColor: Colors.blue),
-                child: _isSubmitting 
-                    ? const CircularProgressIndicator(color: Colors.white) 
-                    : const Text('Submit Complaint', style: TextStyle(fontSize: 18, color: Colors.white)),
-              ),
-            ],
-          ),
-        ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [_buildRegistrationForm(), _buildStatusList()],
       ),
     );
+  }
+
+  Widget _buildRegistrationForm() {
+    return Form(
+      key: _formKey,
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          DropdownButtonFormField<String>(
+            value: _selectedBuilding,
+            decoration: const InputDecoration(labelText: "Building", border: OutlineInputBorder()),
+            items: _buildings.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
+            onChanged: (val) => setState(() { _selectedBuilding = val; _isOtherBuilding = (val == "Others"); }),
+            validator: (v) => v == null ? "Required" : null,
+          ),
+          if (_isOtherBuilding) Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: TextFormField(
+              controller: _manualBuildingController, 
+              decoration: const InputDecoration(labelText: "Enter Building Name/No", border: OutlineInputBorder())
+            ),
+          ),
+          const SizedBox(height: 15),
+          TextFormField(
+            decoration: const InputDecoration(labelText: "Flat Number", border: OutlineInputBorder()), 
+            onSaved: (v) => _flat = v ?? '',
+            validator: (v) => (v == null || v.isEmpty) ? "Required" : null,
+          ),
+          const SizedBox(height: 15),
+          DropdownButtonFormField<String>(
+            value: _selectedType,
+            decoration: const InputDecoration(labelText: "Issue", border: OutlineInputBorder()),
+            items: _complaintTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+            onChanged: (val) => setState(() { _selectedType = val; _isOtherType = (val == "Others"); }),
+            validator: (v) => v == null ? "Required" : null,
+          ),
+          if (_isOtherType) Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: TextFormField(
+              controller: _manualTypeController, 
+              decoration: const InputDecoration(labelText: "Describe issue", border: OutlineInputBorder())
+            ),
+          ),
+          const SizedBox(height: 15),
+          TextFormField(
+            decoration: const InputDecoration(labelText: "Remarks", border: OutlineInputBorder()), 
+            maxLines: 2,
+            onSaved: (v) => _desc = v ?? '',
+          ),
+          const SizedBox(height: 25),
+          ElevatedButton(
+            onPressed: _loading ? null : _submit, 
+            child: _loading ? const CircularProgressIndicator() : const Text("SUBMIT")
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusList() {
+    final complaintService = Provider.of<ComplaintService>(context);
+    return StreamBuilder<List<Complaint>>(
+      stream: complaintService.getComplaintsByPhone(widget.phoneNumber),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        
+        final allComplaints = snapshot.data ?? [];
+        final complaints = allComplaints.where((c) => c.isDeleted == false).toList();
+
+        if (complaints.isEmpty) return const Center(child: Text("No active complaints."));
+
+        return ListView.builder(
+          itemCount: complaints.length,
+          itemBuilder: (context, index) {
+            final c = complaints[index];
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+              child: ListTile(
+                title: Text(c.category, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Status: ${c.status}"),
+                    // If Resolved, show tech note. If Closed by Customer, show customer note.
+                    if (c.standbyReason.isNotEmpty)
+                      Text(
+                        c.status == "Closed by Customer" 
+                          ? "Your Note: ${c.standbyReason}" 
+                          : "Tech Remarks: ${c.standbyReason}", 
+                        style: TextStyle(
+                          color: c.status == "Closed by Customer" ? Colors.blueGrey : Colors.green, 
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic
+                        )
+                      ),
+                  ],
+                ),
+                trailing: Wrap(
+                  spacing: 5,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _getStatusChip(c.status),
+                    if (c.status != 'Resolved' && c.status != 'Closed by Customer')
+                      IconButton(
+                        icon: const Icon(Icons.cancel, color: Colors.red),
+                        tooltip: "Close Request",
+                        onPressed: () => _showCustomerCloseDialog(context, complaintService, c),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _getStatusChip(String status) {
+    Color color = Colors.blue;
+    if (status == 'Pending') color = Colors.orange;
+    if (status == 'Completed' || status == 'Resolved') color = Colors.green;
+    if (status == 'Closed by Customer') color = Colors.grey;
+    
+    return Chip(
+      label: Text(status, style: const TextStyle(color: Colors.white, fontSize: 10)), 
+      backgroundColor: color,
+      padding: EdgeInsets.zero,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+  }
+
+  @override
+  void dispose() { 
+    _tabController.dispose(); 
+    _manualBuildingController.dispose(); 
+    _manualTypeController.dispose(); 
+    super.dispose(); 
   }
 }

@@ -1,158 +1,173 @@
-import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Complaint {
   final String id;
-  final String customerName;
   final String customerPhone;
+  final String customerName;
   final String address;
-  final String problemDescription;
   final String category;
   final DateTime createdAt;
   final String status;
-  final String? technicianId;
+  final String priority;
+  final String flatNumber;
+  final String buildingName;
+  final String complaintType;
+  final String description;
+  final String standbyReason;
   final String? technicianName;
-  final String? notes;
-  final List<String>? imageUrls;
-  final String? estimatedCost;
-  final String? actualCost;
-  final DateTime? updatedAt;
-  final String? priority;
+  final String? serviceReportNumber;
+  final List<String> imageUrls;
+  final bool isDeleted;
   
-  // New fields to match RegisterComplaintScreen
-  final String? flatNumber;
-  final String? buildingName;
-  final String? complaintType;
-  final String? description;
+  // Lifecycle & Audit Fields
+  final DateTime? startTime;
+  final DateTime? standbyTime;
+  final DateTime? completedAt;
+  final String? standbyBy;      // Added field
+  final String? closedBy;
+  final String? deleteRemarks;
+  final String finalRemarks;    // Dedicated remarks field
 
   Complaint({
     required this.id,
-    required this.customerName,
     required this.customerPhone,
+    required this.customerName,
     required this.address,
-    required this.problemDescription,
     required this.category,
     required this.createdAt,
-    this.status = 'Pending',
-    this.technicianId,
+    required this.status,
+    required this.priority,
+    required this.flatNumber,
+    required this.buildingName,
+    required this.complaintType,
+    required this.description,
+    required this.standbyReason,
     this.technicianName,
-    this.notes,
-    this.imageUrls,
-    this.estimatedCost,
-    this.actualCost,
-    this.updatedAt,
-    this.priority = 'Medium',
-    this.flatNumber,
-    this.buildingName,
-    this.complaintType,
-    this.description,
+    this.serviceReportNumber,
+    this.imageUrls = const [],
+    this.isDeleted = false,
+    this.startTime,
+    this.standbyTime,
+    this.completedAt,
+    this.standbyBy,
+    this.closedBy,
+    this.deleteRemarks,
+    this.finalRemarks = '',
   });
+
+  /// Master copyWith to support the Admin Master Edit Dialog
+  Complaint copyWith({
+    String? id,
+    String? buildingName,
+    String? flatNumber,
+    String? complaintType,
+    String? description,
+    String? status,
+    String? standbyReason,
+    String? technicianName,
+    DateTime? startTime,
+    DateTime? standbyTime,
+    DateTime? completedAt,
+    String? standbyBy,
+    String? closedBy,
+    String? serviceReportNumber,
+    bool? isDeleted,
+    String? deleteRemarks,
+    String? finalRemarks,
+    List<String>? imageUrls,
+  }) {
+    return Complaint(
+      id: id ?? this.id,
+      customerPhone: this.customerPhone,
+      customerName: this.customerName,
+      address: this.address,
+      category: this.category,
+      createdAt: this.createdAt,
+      priority: this.priority,
+      imageUrls: imageUrls ?? this.imageUrls,
+      buildingName: buildingName ?? this.buildingName,
+      flatNumber: flatNumber ?? this.flatNumber,
+      complaintType: complaintType ?? this.complaintType,
+      description: description ?? this.description,
+      status: status ?? this.status,
+      standbyReason: standbyReason ?? this.standbyReason,
+      technicianName: technicianName ?? this.technicianName,
+      startTime: startTime ?? this.startTime,
+      standbyTime: standbyTime ?? this.standbyTime,
+      completedAt: completedAt ?? this.completedAt,
+      standbyBy: standbyBy ?? this.standbyBy,
+      closedBy: closedBy ?? this.closedBy,
+      serviceReportNumber: serviceReportNumber ?? this.serviceReportNumber,
+      isDeleted: isDeleted ?? this.isDeleted,
+      deleteRemarks: deleteRemarks ?? this.deleteRemarks,
+      finalRemarks: finalRemarks ?? this.finalRemarks,
+    );
+  }
+
+  factory Complaint.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+
+    // Helper to handle both Firebase Timestamps and ISO String dates
+    DateTime? parseFlexibleDate(dynamic value) {
+      if (value == null) return null;
+      if (value is Timestamp) return value.toDate();
+      if (value is String) return DateTime.tryParse(value);
+      return null;
+    }
+
+    return Complaint(
+      id: doc.id,
+      customerPhone: data['customerPhone'] ?? '',
+      customerName: data['customerName'] ?? '',
+      address: data['address'] ?? '',
+      category: data['category'] ?? '',
+      createdAt: parseFlexibleDate(data['createdAt']) ?? DateTime.now(),
+      status: data['status'] ?? 'Pending',
+      priority: data['priority'] ?? 'Medium',
+      flatNumber: data['flatNumber'] ?? '',
+      buildingName: data['buildingName'] ?? '',
+      complaintType: data['complaintType'] ?? '',
+      description: data['description'] ?? '',
+      standbyReason: data['standbyReason'] ?? '',
+      technicianName: data['technicianName'],
+      serviceReportNumber: data['serviceReportNumber'],
+      imageUrls: List<String>.from(data['imageUrls'] ?? []),
+      isDeleted: data['isDeleted'] ?? false,
+      startTime: parseFlexibleDate(data['startTime']),
+      standbyTime: parseFlexibleDate(data['standbyTime']),
+      completedAt: parseFlexibleDate(data['completedAt']),
+      standbyBy: data['standbyBy'],
+      closedBy: data['closedBy'],
+      deleteRemarks: data['deleteRemarks'],
+      finalRemarks: data['finalRemarks'] ?? '',
+    );
+  }
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
-      'customerName': customerName,
       'customerPhone': customerPhone,
+      'customerName': customerName,
       'address': address,
-      'problemDescription': problemDescription,
       'category': category,
-      'createdAt': createdAt.toIso8601String(),
+      'createdAt': Timestamp.fromDate(createdAt),
       'status': status,
-      'technicianId': technicianId,
-      'technicianName': technicianName,
-      'notes': notes,
-      'imageUrls': imageUrls,
-      'estimatedCost': estimatedCost,
-      'actualCost': actualCost,
-      'updatedAt': updatedAt?.toIso8601String(),
       'priority': priority,
       'flatNumber': flatNumber,
       'buildingName': buildingName,
       'complaintType': complaintType,
       'description': description,
+      'standbyReason': standbyReason,
+      'technicianName': technicianName,
+      'serviceReportNumber': serviceReportNumber,
+      'imageUrls': imageUrls,
+      'isDeleted': isDeleted,
+      'startTime': startTime != null ? Timestamp.fromDate(startTime!) : null,
+      'standbyTime': standbyTime != null ? Timestamp.fromDate(standbyTime!) : null,
+      'completedAt': completedAt != null ? Timestamp.fromDate(completedAt!) : null,
+      'standbyBy': standbyBy,
+      'closedBy': closedBy,
+      'deleteRemarks': deleteRemarks,
+      'finalRemarks': finalRemarks,
     };
   }
-
-  factory Complaint.fromMap(Map<String, dynamic> map, String id) {
-    // Helper to handle date parsing safely
-    DateTime parseDate(dynamic date) {
-      if (date == null) return DateTime.now();
-      try {
-        return DateTime.parse(date.toString());
-      } catch (e) {
-        return DateTime.now();
-      }
-    }
-
-    return Complaint(
-      id: id,
-      customerName: map['customerName'] ?? 'Unknown Customer',
-      customerPhone: map['customerPhone'] ?? '',
-      address: map['address'] ?? '',
-      problemDescription: map['problemDescription'] ?? '',
-      category: map['category'] ?? 'Other',
-      createdAt: parseDate(map['createdAt']),
-      status: map['status'] ?? 'Pending',
-      technicianId: map['technicianId'],
-      technicianName: map['technicianName'],
-      notes: map['notes'],
-      imageUrls: map['imageUrls'] != null ? List<String>.from(map['imageUrls']) : null,
-      estimatedCost: map['estimatedCost'],
-      actualCost: map['actualCost'],
-      updatedAt: map['updatedAt'] != null ? DateTime.parse(map['updatedAt'].toString()) : null,
-      priority: map['priority'] ?? 'Medium',
-      flatNumber: map['flatNumber'],
-      buildingName: map['buildingName'],
-      complaintType: map['complaintType'],
-      description: map['description'],
-    );
-  }
-
-  Complaint copyWith({
-    String? id,
-    String? customerName,
-    String? customerPhone,
-    String? address,
-    String? problemDescription,
-    String? category,
-    DateTime? createdAt,
-    String? status,
-    String? technicianId,
-    String? technicianName,
-    String? notes,
-    List<String>? imageUrls,
-    String? estimatedCost,
-    String? actualCost,
-    DateTime? updatedAt,
-    String? priority,
-    String? flatNumber,
-    String? buildingName,
-    String? complaintType,
-    String? description,
-  }) {
-    return Complaint(
-      id: id ?? this.id,
-      customerName: customerName ?? this.customerName,
-      customerPhone: customerPhone ?? this.customerPhone,
-      address: address ?? this.address,
-      problemDescription: problemDescription ?? this.problemDescription,
-      category: category ?? this.category,
-      createdAt: createdAt ?? this.createdAt,
-      status: status ?? this.status,
-      technicianId: technicianId ?? this.technicianId,
-      technicianName: technicianName ?? this.technicianName,
-      notes: notes ?? this.notes,
-      imageUrls: imageUrls ?? this.imageUrls,
-      estimatedCost: estimatedCost ?? this.estimatedCost,
-      actualCost: actualCost ?? this.actualCost,
-      updatedAt: updatedAt ?? this.updatedAt,
-      priority: priority ?? this.priority,
-      flatNumber: flatNumber ?? this.flatNumber,
-      buildingName: buildingName ?? this.buildingName,
-      complaintType: complaintType ?? this.complaintType,
-      description: description ?? this.description,
-    );
-  }
-
-  String toJson() => json.encode(toMap());
-  factory Complaint.fromJson(String source) => Complaint.fromMap(json.decode(source), '');
 }

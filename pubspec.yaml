@@ -1,7 +1,7 @@
 name: complaint_manager
 description: A Flutter complaint management system with Firebase
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.2+2   # 👈 updated
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -10,20 +10,20 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Firebase packages - UPDATED to latest compatible versions
+  # Firebase packages
   firebase_core: ^4.4.0
   firebase_auth: ^6.1.4
-  cloud_firestore: ^6.1.2  # This supports named databases
+  cloud_firestore: ^6.1.2
   firebase_storage: ^13.0.6
-  
+
   # State Management & Utilities
   provider: ^6.1.1
   shared_preferences: ^2.2.2
-  
+
   # UI & Utilities
   image_picker: ^1.0.4
   intl: ^0.20.2
-  
+
   # Location packages
   google_maps_flutter: ^2.5.0
   geolocator: ^11.1.0
