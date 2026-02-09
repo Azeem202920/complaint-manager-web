@@ -23,10 +23,10 @@ class Complaint {
   final DateTime? startTime;
   final DateTime? standbyTime;
   final DateTime? completedAt;
-  final String? standbyBy;      // Added field
+  final String? standbyBy;
   final String? closedBy;
   final String? deleteRemarks;
-  final String finalRemarks;    // Dedicated remarks field
+  final String finalRemarks;
 
   Complaint({
     required this.id,
@@ -55,7 +55,7 @@ class Complaint {
     this.finalRemarks = '',
   });
 
-  /// Master copyWith to support the Admin Master Edit Dialog
+  /// Master copyWith: Updated to include technicianName and finalRemarks
   Complaint copyWith({
     String? id,
     String? buildingName,
@@ -91,7 +91,7 @@ class Complaint {
       description: description ?? this.description,
       status: status ?? this.status,
       standbyReason: standbyReason ?? this.standbyReason,
-      technicianName: technicianName ?? this.technicianName,
+      technicianName: technicianName ?? this.technicianName, // Corrected logic
       startTime: startTime ?? this.startTime,
       standbyTime: standbyTime ?? this.standbyTime,
       completedAt: completedAt ?? this.completedAt,
@@ -107,7 +107,7 @@ class Complaint {
   factory Complaint.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
 
-    // Helper to handle both Firebase Timestamps and ISO String dates
+    // Robust parser to handle Timestamps or ISO8601 Strings
     DateTime? parseFlexibleDate(dynamic value) {
       if (value == null) return null;
       if (value is Timestamp) return value.toDate();

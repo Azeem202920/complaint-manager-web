@@ -47,6 +47,7 @@ class ComplaintService extends ChangeNotifier {
   }
 
   Future<void> updateComplaint(Complaint complaint) async {
+    // Ensure the toMap includes the latest technician and status info
     await _db
         .collection(collectionPath)
         .doc(complaint.id)
@@ -54,34 +55,45 @@ class ComplaintService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// USE THIS for Lifecycle changes in the Technician Screen
-  /// Forces tracking of WHO performed the action and WHEN.
+  /// UPDATED: This method now explicitly tracks WHO changed the status
   Future<void> updateLifecycleStatus({
     required String id,
     required String status,
-    required String userName, // Pass the logged-in technician's name
-    String? reason,           // Standby or Closing remarks
-    String? serialNo,         // Serial number for closing
+    required String userName, // This should be the Tech Name or Customer Name
+    String? reason,          
+    String? serialNo,         
     bool isStarting = false,
     bool isStandby = false,
     bool isClosing = false,
   }) async {
-    Map<String, dynamic> updates = {'status': status};
+    Map<String, dynamic> updates = {
+      'status': status,
+      'lastUpdatedBy': userName, // Audit track
+      'lastUpdatedAt': FieldValue.serverTimestamp(),
+    };
 
     if (isStarting) {
       updates['startTime'] = FieldValue.serverTimestamp();
-      updates['technicianName'] = userName; 
+      updates['technicianName'] = userName; // Records the tech who started
+      updates['startedBy'] = userName;
     }
+    
     if (isStandby) {
       updates['standbyTime'] = FieldValue.serverTimestamp();
       updates['standbyReason'] = reason;   
-      updates['technicianName'] = userName; 
+      updates['standbyBy'] = userName; // Records who put it on standby
     }
+    
     if (isClosing) {
       updates['completedAt'] = FieldValue.serverTimestamp();
-      updates['closedBy'] = userName;      
-      updates['standbyReason'] = reason;   // Re-used for final remarks
+      updates['closedBy'] = userName; // Records specifically if Tech or Customer closed it
+      updates['finalRemarks'] = reason; 
       updates['serviceReportNumber'] = serialNo;
+      
+      // If a technician is closing it, ensure their name is in the record
+      if (status == "Resolved") {
+        updates['technicianName'] = userName;
+      }
     }
 
     await _db.collection(collectionPath).doc(id).update(updates);
@@ -113,9 +125,13 @@ class ComplaintService extends ChangeNotifier {
   Future<void> checkDatabaseExists() async {
     try {
       final snapshot = await _db.collection(collectionPath).limit(1).get();
-      debugPrint("DB Check: ${snapshot.docs.isNotEmpty ? "Data found" : "Collection empty"}");
+      if (snapshot.docs.isNotEmpty) {
+        debugPrint("DB Check: Data found in '$collectionPath'");
+      } else {
+        debugPrint("DB Check: Collection '$collectionPath' is empty.");
+      }
     } catch (e) {
-      debugPrint("DB Check: Error -> $e");
+      debugPrint("DB Check: Error accessing collection -> $e");
     }
   }
 }
