@@ -16,6 +16,7 @@ class Complaint {
   final String standbyReason;
   final String? technicianName;
   final String? serviceReportNumber;
+  final String materialsUsed; // <--- NEW
   final List<String> imageUrls;
   final bool isDeleted;
   
@@ -44,6 +45,7 @@ class Complaint {
     required this.standbyReason,
     this.technicianName,
     this.serviceReportNumber,
+    this.materialsUsed = '', // <--- NEW
     this.imageUrls = const [],
     this.isDeleted = false,
     this.startTime,
@@ -55,7 +57,6 @@ class Complaint {
     this.finalRemarks = '',
   });
 
-  /// Master copyWith: Updated to include technicianName and finalRemarks
   Complaint copyWith({
     String? id,
     String? buildingName,
@@ -71,6 +72,7 @@ class Complaint {
     String? standbyBy,
     String? closedBy,
     String? serviceReportNumber,
+    String? materialsUsed, // <--- NEW
     bool? isDeleted,
     String? deleteRemarks,
     String? finalRemarks,
@@ -91,13 +93,14 @@ class Complaint {
       description: description ?? this.description,
       status: status ?? this.status,
       standbyReason: standbyReason ?? this.standbyReason,
-      technicianName: technicianName ?? this.technicianName, // Corrected logic
+      technicianName: technicianName ?? this.technicianName,
       startTime: startTime ?? this.startTime,
       standbyTime: standbyTime ?? this.standbyTime,
       completedAt: completedAt ?? this.completedAt,
       standbyBy: standbyBy ?? this.standbyBy,
       closedBy: closedBy ?? this.closedBy,
       serviceReportNumber: serviceReportNumber ?? this.serviceReportNumber,
+      materialsUsed: materialsUsed ?? this.materialsUsed, // <--- NEW
       isDeleted: isDeleted ?? this.isDeleted,
       deleteRemarks: deleteRemarks ?? this.deleteRemarks,
       finalRemarks: finalRemarks ?? this.finalRemarks,
@@ -107,7 +110,6 @@ class Complaint {
   factory Complaint.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
 
-    // Robust parser to handle Timestamps or ISO8601 Strings
     DateTime? parseFlexibleDate(dynamic value) {
       if (value == null) return null;
       if (value is Timestamp) return value.toDate();
@@ -131,6 +133,7 @@ class Complaint {
       standbyReason: data['standbyReason'] ?? '',
       technicianName: data['technicianName'],
       serviceReportNumber: data['serviceReportNumber'],
+      materialsUsed: data['materialsUsed'] ?? '', // <--- NEW
       imageUrls: List<String>.from(data['imageUrls'] ?? []),
       isDeleted: data['isDeleted'] ?? false,
       startTime: parseFlexibleDate(data['startTime']),
@@ -159,6 +162,7 @@ class Complaint {
       'standbyReason': standbyReason,
       'technicianName': technicianName,
       'serviceReportNumber': serviceReportNumber,
+      'materialsUsed': materialsUsed, // <--- NEW
       'imageUrls': imageUrls,
       'isDeleted': isDeleted,
       'startTime': startTime != null ? Timestamp.fromDate(startTime!) : null,

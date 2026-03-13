@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/complaint.dart';
 import '../services/complaint_service.dart';
@@ -22,7 +21,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   DateTime? customDate;
 
   final List<String> _buildings = [
-    "All", "Expo Tower", "Gate Tower 1", "Gate Tower 2", "Galleria Mall",
+    "All", "Expo Tower", "Mazaya", "Yasmeen Tower", "Gate Tower 1", "Gate Tower 2", "Galleria Mall", 
     "Al Khor Tower C", "Al Tameer", "Rital & Rinad", "Tallah Mall",
     "Al Khor Mall", "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5",
     "Naseem", "Nada building", "Hala Building", "Ajman Club",
@@ -33,28 +32,9 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   final List<String> _statusOptions = ["All", "Pending", "In Progress", "Standby", "Resolved"];
   final List<String> _timeOptions = ["All", "Today", "Yesterday", "Select Date"];
 
-  /// IMPROVED: Prioritizes the PIN-login name for accurate Admin Audits
   Future<String> _getTechnicianName() async {
     final prefs = await SharedPreferences.getInstance();
-    // This 'user_name' was set during the PIN login in HomeScreen
-    String? name = prefs.getString('user_name');
-    
-    if (name != null && name.isNotEmpty) return name;
-
-    // Fallback to Firebase if SharedPreferences is empty
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser?.displayName != null && currentUser!.displayName!.isNotEmpty) {
-      return currentUser.displayName!;
-    }
-
-    return "Unknown Tech";
-  }
-
-  void _handleLogout(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
-    if (mounted) {
-      await HomeScreen.logout(context);
-    }
+    return prefs.getString('user_name') ?? "Unknown Tech";
   }
 
   bool _isSameDay(DateTime d1, DateTime d2) =>
@@ -67,10 +47,10 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Technician Portal"),
-        centerTitle: true,
+        backgroundColor: Colors.orange.shade800, // Distinct color for Tech
         leading: IconButton(
-          icon: const Icon(Icons.exit_to_app, color: Colors.redAccent),
-          onPressed: () => _handleLogout(context),
+          icon: const Icon(Icons.logout),
+          onPressed: () => HomeScreen.logout(context),
         ),
         actions: [
           IconButton(
@@ -92,40 +72,28 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
             child: StreamBuilder<List<Complaint>>(
               stream: service.getAdminFullHistory(),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-                final allData = snapshot.data ?? [];
+                final filteredList = snapshot.data!.where((c) {
+                  if (c.isDeleted == true) return false; // Hide deleted from tech
 
-                final filteredList = allData.where((c) {
-                  if (c.isDeleted == true) return false;
-
-                  bool matchStatus = selectedStatus == "All" ||
-                      c.status.trim().toLowerCase() == selectedStatus.toLowerCase();
-
-                  bool matchBuilding = selectedBuilding == "All" ||
-                      c.buildingName.trim() == selectedBuilding;
-
+                  bool matchStatus = selectedStatus == "All" || c.status == selectedStatus;
+                  bool matchBuilding = selectedBuilding == "All" || c.buildingName == selectedBuilding;
+                  
                   bool matchTime = true;
-                  if (selectedTimeFrame == "Today") {
-                    matchTime = _isSameDay(c.createdAt, DateTime.now());
-                  } else if (selectedTimeFrame == "Yesterday") {
-                    matchTime = _isSameDay(c.createdAt, DateTime.now().subtract(const Duration(days: 1)));
-                  } else if (selectedTimeFrame == "Select Date" && customDate != null) {
-                    matchTime = _isSameDay(c.createdAt, customDate!);
-                  }
+                  if (selectedTimeFrame == "Today") matchTime = _isSameDay(c.createdAt, DateTime.now());
+                  if (selectedTimeFrame == "Yesterday") matchTime = _isSameDay(c.createdAt, DateTime.now().subtract(const Duration(days: 1)));
+                  if (selectedTimeFrame == "Select Date" && customDate != null) matchTime = _isSameDay(c.createdAt, customDate!);
+
                   return matchStatus && matchBuilding && matchTime;
                 }).toList();
 
-                if (filteredList.isEmpty) {
-                  return const Center(child: Text("No complaints found."));
-                }
+                if (filteredList.isEmpty) return const Center(child: Text("No tasks found."));
 
                 return ListView.builder(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: filteredList.length,
-                  itemBuilder: (context, index) => _buildCard(context, service, filteredList[index]),
+                  itemBuilder: (context, index) => _buildTaskCard(context, service, filteredList[index]),
                 );
               },
             ),
@@ -138,199 +106,225 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   Widget _buildFilterBar() {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         children: [
-          _buildRow("Status", _statusOptions),
-          _buildRow("Building", _buildings),
-          _buildRow("Time", _timeOptions),
+          _buildFilterRow("Status", _statusOptions),
+          _buildFilterRow("Building", _buildings),
+          _buildFilterRow("Time", _timeOptions),
         ],
       ),
     );
   }
 
-  Widget _buildRow(String label, List<String> opts) {
+  Widget _buildFilterRow(String label, List<String> opts) {
     return SizedBox(
-      height: 44,
-      child: ListView.separated(
+      height: 40,
+      child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         itemCount: opts.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 8),
         itemBuilder: (context, i) {
-          final String opt = opts[i];
-          bool isSelected = false;
-          if (label == "Status") isSelected = (selectedStatus == opt);
-          if (label == "Building") isSelected = (selectedBuilding == opt);
-          if (label == "Time") isSelected = (selectedTimeFrame == opt);
+          String opt = opts[i];
+          bool isSelected = (label == "Status" && selectedStatus == opt) ||
+                            (label == "Building" && selectedBuilding == opt) ||
+                            (label == "Time" && selectedTimeFrame == opt);
 
-          return ChoiceChip(
-            label: Text(
-                opt == "Select Date" && customDate != null
-                    ? DateFormat('dd/MM').format(customDate!)
-                    : opt,
-                style: const TextStyle(fontSize: 12)),
-            selected: isSelected,
-            selectedColor: Colors.blue.shade700,
-            labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
-            onSelected: (val) async {
-              if (opt == "Select Date") {
-                DateTime? d = await showDatePicker(
-                    context: context,
-                    initialDate: DateTime.now(),
-                    firstDate: DateTime(2025),
-                    lastDate: DateTime.now());
-                if (d != null) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: ChoiceChip(
+              label: Text(opt == "Select Date" && customDate != null ? DateFormat('dd/MM').format(customDate!) : opt, 
+                          style: const TextStyle(fontSize: 11)),
+              selected: isSelected,
+              selectedColor: Colors.orange.shade800,
+              labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
+              onSelected: (val) async {
+                if (opt == "Select Date") {
+                  DateTime? d = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2025), lastDate: DateTime.now());
+                  if (d != null) setState(() { selectedTimeFrame = "Select Date"; customDate = d; });
+                } else {
                   setState(() {
-                    selectedTimeFrame = "Select Date";
-                    customDate = d;
+                    if (label == "Status") selectedStatus = opt;
+                    if (label == "Building") selectedBuilding = opt;
+                    if (label == "Time") { selectedTimeFrame = opt; customDate = null; }
                   });
                 }
-              } else {
-                setState(() {
-                  if (label == "Status") selectedStatus = opt;
-                  if (label == "Building") selectedBuilding = opt;
-                  if (label == "Time") {
-                    selectedTimeFrame = opt;
-                    customDate = null;
-                  }
-                });
-              }
-            },
+              },
+            ),
           );
         },
       ),
     );
   }
 
-  Widget _buildCard(BuildContext context, ComplaintService service, Complaint c) {
+  Widget _buildTaskCard(BuildContext context, ComplaintService service, Complaint c) {
     bool isLocked = c.status == "Resolved" || c.status == "Closed by Customer";
+    bool isStandby = c.status == "Standby";
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      elevation: 2,
       child: ListTile(
-        title: Text("${c.buildingName} - ${c.flatNumber}", style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text("${c.complaintType}\n${DateFormat('dd MMM, hh:mm a').format(c.createdAt)}"),
-        trailing: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-              color: (isLocked ? Colors.grey : Colors.blue).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(4)),
-          child: Text(c.status,
-              style: TextStyle(
-                  color: (isLocked ? Colors.black54 : Colors.blue),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 10)),
+        title: Text("${c.buildingName} - Flat ${c.flatNumber}", style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Issue: ${c.complaintType}"),
+            if (isStandby) Text("Reason: ${c.standbyReason}", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
+            Text(DateFormat('dd MMM, hh:mm a').format(c.createdAt), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          ],
         ),
-        onTap: () => isLocked ? _viewOnly(context, c) : _showActions(context, service, c),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: isLocked ? Colors.grey.shade200 : (isStandby ? Colors.orange.shade100 : Colors.blue.shade100),
+            borderRadius: BorderRadius.circular(4)
+          ),
+          child: Text(c.status, style: TextStyle(
+            color: isLocked ? Colors.grey.shade700 : (isStandby ? Colors.orange.shade900 : Colors.blue.shade900),
+            fontWeight: FontWeight.bold, fontSize: 11
+          )),
+        ),
+        onTap: () => isLocked ? _showDetails(context, c) : _showActionSheet(context, service, c),
       ),
     );
   }
 
-  void _showActions(BuildContext context, ComplaintService service, Complaint c) {
+  void _showActionSheet(BuildContext context, ComplaintService service, Complaint c) {
     showModalBottomSheet(
       context: context,
-      builder: (context) => Wrap(children: [
-        ListTile(
-            leading: const Icon(Icons.play_arrow, color: Colors.green),
-            title: const Text("Start Work"),
-            onTap: () async {
-              final userName = await _getTechnicianName();
-              await service.updateLifecycleStatus(
-                id: c.id,
-                status: "In Progress",
-                userName: userName, // Passing actual Tech name
-                isStarting: true,
-              );
-              if (context.mounted) Navigator.pop(context);
-            }),
-        ListTile(
-            leading: const Icon(Icons.pause, color: Colors.orange),
-            title: const Text("Standby"),
-            onTap: () {
-              Navigator.pop(context);
-              _inputStandby(context, service, c);
-            }),
-        ListTile(
-            leading: const Icon(Icons.check_circle, color: Colors.blue),
-            title: const Text("Resolve Task"),
-            onTap: () {
-              Navigator.pop(context);
-              _completeTask(context, service, c);
-            }),
-      ]),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text("Update Status: ${c.id.substring(0,8)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.play_circle_fill, color: Colors.green),
+              title: const Text("Start Work / In Progress"),
+              onTap: () async {
+                final name = await _getTechnicianName();
+                await service.updateLifecycleStatus(id: c.id, status: "In Progress", userName: name, isStarting: true);
+                if (context.mounted) Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.pause_circle_filled, color: Colors.orange),
+              title: const Text("Move to Standby"),
+              onTap: () {
+                Navigator.pop(context);
+                _showStandbyDialog(context, service, c);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.check_circle, color: Colors.blue),
+              title: const Text("Resolve / Complete Task"),
+              onTap: () {
+                Navigator.pop(context);
+                _showResolveDialog(context, service, c);
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
     );
   }
 
-  void _inputStandby(BuildContext context, ComplaintService service, Complaint c) {
-    final t = TextEditingController();
+  void _showStandbyDialog(BuildContext context, ComplaintService service, Complaint c) {
+    final reasonCtrl = TextEditingController();
     showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-                title: const Text("Move to Standby"),
-                content: TextField(controller: t, decoration: const InputDecoration(hintText: "Reason for standby")),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                  ElevatedButton(
-                      onPressed: () async {
-                        final userName = await _getTechnicianName();
-                        await service.updateLifecycleStatus(
-                          id: c.id,
-                          status: "Standby",
-                          userName: userName, // Passing actual Tech name
-                          reason: t.text,
-                          isStandby: true,
-                        );
-                        if (context.mounted) Navigator.pop(context);
-                      },
-                      child: const Text("Update"))
-                ]));
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Standby Reason"),
+        content: TextField(controller: reasonCtrl, decoration: const InputDecoration(hintText: "e.g., Waiting for spare parts")),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+          ElevatedButton(
+            onPressed: () async {
+              if (reasonCtrl.text.isEmpty) return;
+              final name = await _getTechnicianName();
+              await service.updateLifecycleStatus(id: c.id, status: "Standby", userName: name, reason: reasonCtrl.text, isStandby: true);
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text("CONFIRM"),
+          )
+        ],
+      ),
+    );
   }
 
-  void _completeTask(BuildContext context, ComplaintService service, Complaint c) {
-    final s = TextEditingController();
-    final r = TextEditingController();
+  void _showResolveDialog(BuildContext context, ComplaintService service, Complaint c) {
+    final reportCtrl = TextEditingController();
+    final remarksCtrl = TextEditingController();
+    final materialsCtrl = TextEditingController();
+
     showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-                title: const Text("Final Report"),
-                content: Column(mainAxisSize: MainAxisSize.min, children: [
-                  TextField(controller: s, decoration: const InputDecoration(labelText: "Service Report Number")),
-                  const SizedBox(height: 8),
-                  TextField(controller: r, decoration: const InputDecoration(labelText: "Final Remarks (Mandatory)"))
-                ]),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-                  ElevatedButton(
-                      onPressed: () async {
-                        if (r.text.trim().isEmpty) {
-                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Remarks are mandatory")));
-                           return;
-                        }
-                        final userName = await _getTechnicianName();
-                        await service.updateLifecycleStatus(
-                          id: c.id,
-                          status: "Resolved",
-                          userName: userName, // Passing actual Tech name
-                          reason: r.text,
-                          serialNo: s.text,
-                          isClosing: true,
-                        );
-                        if (context.mounted) Navigator.pop(context);
-                      },
-                      child: const Text("Submit"))
-                ]));
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Complete Task"),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: reportCtrl, decoration: const InputDecoration(labelText: "Service Report #")),
+              const SizedBox(height: 10),
+              TextField(controller: materialsCtrl, decoration: const InputDecoration(labelText: "Materials Used")),
+              const SizedBox(height: 10),
+              TextField(controller: remarksCtrl, maxLines: 3, decoration: const InputDecoration(labelText: "Final Remarks", border: OutlineInputBorder())),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+          ElevatedButton(
+            onPressed: () async {
+              if (remarksCtrl.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Remarks are required")));
+                return;
+              }
+              final name = await _getTechnicianName();
+              await service.updateLifecycleStatus(
+                id: c.id, 
+                status: "Resolved", 
+                userName: name, 
+                reason: remarksCtrl.text, 
+                serialNo: reportCtrl.text,
+                materials: materialsCtrl.text,
+                isClosing: true
+              );
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text("SUBMIT"),
+          )
+        ],
+      ),
+    );
   }
 
-  void _viewOnly(BuildContext context, Complaint c) {
-    String content = (c.status == "Resolved")
-        ? "Technician: ${c.closedBy ?? c.technicianName ?? 'N/A'}\nSerial: ${c.serviceReportNumber}\nRemarks: ${c.finalRemarks}"
-        : "Closed by Customer.";
-
+  void _showDetails(BuildContext context, Complaint c) {
     showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-            title: Text(c.status),
-            content: Text(content),
-            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close"))]));
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Task Details: ${c.status}"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Building: ${c.buildingName}"),
+            Text("Flat: ${c.flatNumber}"),
+            const Divider(),
+            Text("Report #: ${c.serviceReportNumber ?? 'N/A'}"),
+            Text("Materials: ${c.materialsUsed ?? 'N/A'}"),
+            Text("Remarks: ${c.finalRemarks}"),
+            const SizedBox(height: 10),
+            Text("Closed By: ${c.closedBy ?? c.customerName}", style: const TextStyle(fontStyle: FontStyle.italic)),
+          ],
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("CLOSE"))],
+      ),
+    );
   }
 }

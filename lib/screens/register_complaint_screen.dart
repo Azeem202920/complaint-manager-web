@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/complaint.dart';
 import '../services/complaint_service.dart';
-import 'home_screen.dart'; // Ensure this is imported for the logout method
+import 'home_screen.dart'; 
 
 class RegisterComplaintScreen extends StatefulWidget {
   final String phoneNumber;
@@ -31,7 +31,7 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
   bool _loading = false;
 
   final List<String> _complaintTypes = ["Water leakage", "Low cooling", "Smell coming from AC", "Sound coming from AC", "Cleaning/Service", "New rent out", "Low air speed", "Low fan speed", "AC fan not working", "Others"];
-  final List<String> _buildings = ["Expo Tower", "Gate Tower 1", "Gate Tower 2", "Galleria Mall", "Al Khor Tower C", "Al Tameer", "Rital & Rinad", "Tallah Mall", "Al Khor Mall", "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5", "Naseem", "Nada building", "Hala Building", "Ajman Club", "Salah Ud Din", "Sara Plaza 3", "Jurf 2", "Flower Shop", "Amina Hospital", "Villas", "Sharjah", "Others"];
+  final List<String> _buildings = ["Expo Tower", "Mazaya", "Yasmeen Tower", "Gate Tower 1", "Gate Tower 2", "Galleria Mall", "Al Khor Tower C", "Al Tameer", "Rital & Rinad", "Tallah Mall", "Al Khor Mall", "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5", "Naseem", "Nada building", "Hala Building", "Ajman Club", "Salah Ud Din", "Sara Plaza 3", "Jurf 2", "Flower Shop", "Amina Hospital", "Villas", "Sharjah", "Others"];
 
   @override
   void initState() {
@@ -39,31 +39,61 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
     _tabController = TabController(length: 2, vsync: this);
   }
 
+  // Dialog with Remarks TextField as requested
   void _showCustomerCloseDialog(Complaint c) {
     if (c.status == "Resolved" || c.status == "Closed by Customer") return;
+
+    final TextEditingController _remarksController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Close Complaint?"),
-        content: const Text("If your issue is solved, you can close this complaint manually."),
+        title: const Text("Close Complaint"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("If your issue is solved, please provide closing remarks:"),
+            const SizedBox(height: 15),
+            TextField(
+              controller: _remarksController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                hintText: "Enter your closing remarks here...",
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("CANCEL"),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             onPressed: () async {
+              if (_remarksController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Please enter remarks before closing")),
+                );
+                return;
+              }
+
               final service = Provider.of<ComplaintService>(context, listen: false);
               await service.updateLifecycleStatus(
                 id: c.id,
                 status: "Closed by Customer",
                 userName: widget.customerName, 
-                reason: "Manually closed by customer",
+                reason: _remarksController.text.trim(), 
                 isClosing: true,
               );
+              
               if (mounted) Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Complaint Closed.")));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Complaint closed successfully.")),
+              );
             },
-            child: const Text("Confirm Close", style: TextStyle(color: Colors.white)),
+            child: const Text("CLOSE COMPLAINT", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -124,7 +154,7 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () => HomeScreen.logout(context), // Clears the 24-hour session
+            onPressed: () => HomeScreen.logout(context), 
             tooltip: "Logout",
           )
         ],
@@ -223,11 +253,28 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
             final c = complaints[index];
             return Card(
               margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-              child: ListTile(
-                onTap: () => _showCustomerCloseDialog(c), 
-                title: Text("${c.complaintType} - ${c.buildingName}"),
-                subtitle: Text("Flat: ${c.flatNumber} | Status: ${c.status}"),
-                trailing: _getStatusChip(c.status),
+              child: Column(
+                children: [
+                  ListTile(
+                    title: Text("${c.complaintType} - ${c.buildingName}"),
+                    subtitle: Text("Flat: ${c.flatNumber} | Status: ${c.status}"),
+                    trailing: _getStatusChip(c.status),
+                  ),
+                  if (c.status != "Resolved" && c.status != "Closed by Customer")
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0, right: 16.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => _showCustomerCloseDialog(c),
+                            icon: const Icon(Icons.check_circle_outline, color: Colors.green, size: 18),
+                            label: const Text("CLOSE COMPLAINT", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             );
           },

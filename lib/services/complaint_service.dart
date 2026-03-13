@@ -47,7 +47,6 @@ class ComplaintService extends ChangeNotifier {
   }
 
   Future<void> updateComplaint(Complaint complaint) async {
-    // Ensure the toMap includes the latest technician and status info
     await _db
         .collection(collectionPath)
         .doc(complaint.id)
@@ -55,42 +54,44 @@ class ComplaintService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// UPDATED: This method now explicitly tracks WHO changed the status
+  /// UPDATED: Added materialsUsed and explicit technician tracking for Standby/Resolved
   Future<void> updateLifecycleStatus({
     required String id,
     required String status,
-    required String userName, // This should be the Tech Name or Customer Name
+    required String userName, 
     String? reason,          
-    String? serialNo,         
+    String? serialNo,
+    String? materials, // <--- NEW: For Materials Used field
     bool isStarting = false,
     bool isStandby = false,
     bool isClosing = false,
   }) async {
     Map<String, dynamic> updates = {
       'status': status,
-      'lastUpdatedBy': userName, // Audit track
+      'lastUpdatedBy': userName, 
       'lastUpdatedAt': FieldValue.serverTimestamp(),
     };
 
     if (isStarting) {
       updates['startTime'] = FieldValue.serverTimestamp();
-      updates['technicianName'] = userName; // Records the tech who started
+      updates['technicianName'] = userName; 
       updates['startedBy'] = userName;
     }
     
     if (isStandby) {
       updates['standbyTime'] = FieldValue.serverTimestamp();
       updates['standbyReason'] = reason;   
-      updates['standbyBy'] = userName; // Records who put it on standby
+      updates['standbyBy'] = userName; // Records which technician put it on standby
     }
     
     if (isClosing) {
       updates['completedAt'] = FieldValue.serverTimestamp();
-      updates['closedBy'] = userName; // Records specifically if Tech or Customer closed it
+      updates['closedBy'] = userName; 
       updates['finalRemarks'] = reason; 
       updates['serviceReportNumber'] = serialNo;
+      updates['materialsUsed'] = materials ?? ''; // <--- NEW: Reflects in Admin Log
       
-      // If a technician is closing it, ensure their name is in the record
+      // Ensure the technician who resolved it is recorded
       if (status == "Resolved") {
         updates['technicianName'] = userName;
       }
