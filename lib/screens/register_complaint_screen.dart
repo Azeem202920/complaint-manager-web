@@ -30,8 +30,8 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
   bool _isOtherType = false;
   bool _loading = false;
 
-  final List<String> _complaintTypes = ["Water leakage", "Low cooling", "Smell coming from AC", "Sound coming from AC", "Cleaning/Service", "New rent out", "Low air speed", "Low fan speed", "AC fan not working", "Others"];
-  final List<String> _buildings = ["Expo Tower", "Mazaya", "Yasmeen Tower", "Gate Tower 1", "Gate Tower 2", "Galleria Mall", "Al Khor Tower C", "Al Tameer", "Rital & Rinad", "Tallah Mall", "Al Khor Mall", "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5", "Naseem", "Nada building", "Hala Building", "Ajman Club", "Salah Ud Din", "Sara Plaza 3", "Jurf 2", "Flower Shop", "Amina Hospital", "Villas", "Sharjah", "Others"];
+  final List<String> _complaintTypes = ["Not Mentioned", "Water leakage", "Low cooling", "Smell coming from AC", "Sound coming from AC", "Cleaning/Service", "New rent out", "Low air speed", "Low fan speed", "AC fan not working", "No Cooling", "No Power/Electricity", "Others"];
+  final List<String> _buildings = ["Expo Tower", "Gate Tower 1", "Gate Tower 2", "Al Khor Tower C", "Rital & Rinad",  "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5", "Naseem", "Hala Building", "Nada building", "Al Tameer",  "Tallah Mall", "Al Khor Mall", "Mazaya", "Yasmeen Tower", "Ajman Club", "Salah Ud Din", "Sara Plaza 3", "Jurf 2", "Flower Shop", "Amina Hospital", "Villas", "Sharjah", "Rashdiya", "Galleria Mall", "N/A", "Others"];
 
   @override
   void initState() {
@@ -194,7 +194,7 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
           ),
           const SizedBox(height: 15),
           TextFormField(
-            decoration: const InputDecoration(labelText: "Flat Number", border: OutlineInputBorder()), 
+            decoration: const InputDecoration(labelText: "Area/Flat", border: OutlineInputBorder()), 
             onSaved: (v) => _flat = v ?? '',
             validator: (v) => (v == null || v.isEmpty) ? "Required" : null,
           ),

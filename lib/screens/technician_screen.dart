@@ -21,12 +21,12 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   DateTime? customDate;
 
   final List<String> _buildings = [
-    "All", "Expo Tower", "Mazaya", "Yasmeen Tower", "Gate Tower 1", "Gate Tower 2", "Galleria Mall", 
-    "Al Khor Tower C", "Al Tameer", "Rital & Rinad", "Tallah Mall",
-    "Al Khor Mall", "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5",
-    "Naseem", "Nada building", "Hala Building", "Ajman Club",
-    "Salah Ud Din", "Sara Plaza 3", "Jurf 2", "Flower Shop",
-    "Amina Hospital", "Villas", "Sharjah", "Others"
+    "All", "Expo Tower", "Gate Tower 1", "Gate Tower 2", "Al Khor Tower C",
+    "Rital & Rinad",  "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5", "Naseem",
+    "Hala Building", "Nada building", "Al Tameer",  "Tallah Mall", "Al Khor Mall",
+    "Mazaya", "Yasmeen Tower", "Ajman Club", "Salah Ud Din", "Sara Plaza 3", "Jurf 2",
+    "Flower Shop", "Amina Hospital", "Villas", "Sharjah", "Rashdiya", "Galleria Mall",
+    "N/A", "Others"
   ];
 
   final List<String> _statusOptions = ["All", "Pending", "In Progress", "Standby", "Resolved"];
@@ -47,7 +47,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Technician Portal"),
-        backgroundColor: Colors.orange.shade800, // Distinct color for Tech
+        backgroundColor: Colors.orange.shade800,
         leading: IconButton(
           icon: const Icon(Icons.logout),
           onPressed: () => HomeScreen.logout(context),
@@ -75,7 +75,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
                 final filteredList = snapshot.data!.where((c) {
-                  if (c.isDeleted == true) return false; // Hide deleted from tech
+                  if (c.isDeleted == true) return false;
 
                   bool matchStatus = selectedStatus == "All" || c.status == selectedStatus;
                   bool matchBuilding = selectedBuilding == "All" || c.buildingName == selectedBuilding;
@@ -170,6 +170,18 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text("Issue: ${c.complaintType}"),
+            if (c.description.isNotEmpty) 
+              Text("Details: ${c.description}", 
+                maxLines: 1, 
+                overflow: TextOverflow.ellipsis, 
+                style: TextStyle(color: Colors.blueGrey.shade700, fontSize: 12, fontStyle: FontStyle.italic)
+              ),
+            
+            // Logic to display assigned technician name from your model
+            if (c.status != "Pending" && c.status != "Resolved" && c.status != "Closed by Customer")
+               Text("Tech: ${c.technicianName ?? c.standbyBy ?? 'Assigned'}", 
+                 style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
+            
             if (isStandby) Text("Reason: ${c.standbyReason}", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
             Text(DateFormat('dd MMM, hh:mm a').format(c.createdAt), style: const TextStyle(fontSize: 11, color: Colors.grey)),
           ],
@@ -199,8 +211,18 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
           children: [
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Text("Update Status: ${c.id.substring(0,8)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Update Status: ${c.id.substring(0,8)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 4),
+                  Text("Issue: ${c.complaintType}", style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                  if (c.description.isNotEmpty)
+                    Text("Customer Remarks: ${c.description}", style: const TextStyle(fontSize: 13, color: Colors.blueGrey, fontStyle: FontStyle.italic)),
+                ],
+              ),
             ),
+            const Divider(),
             ListTile(
               leading: const Icon(Icons.play_circle_fill, color: Colors.green),
               title: const Text("Start Work / In Progress"),
@@ -316,9 +338,15 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
             Text("Building: ${c.buildingName}"),
             Text("Flat: ${c.flatNumber}"),
             const Divider(),
+            Text("Issue: ${c.complaintType}", style: const TextStyle(fontWeight: FontWeight.bold)),
+            if (c.description.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text("Add. Details: ${c.description}", style: const TextStyle(color: Colors.blueGrey)),
+            ],
+            const Divider(),
             Text("Report #: ${c.serviceReportNumber ?? 'N/A'}"),
-            Text("Materials: ${c.materialsUsed ?? 'N/A'}"),
-            Text("Remarks: ${c.finalRemarks}"),
+            Text("Materials: ${c.materialsUsed}"),
+            Text("Final Remarks: ${c.finalRemarks}"),
             const SizedBox(height: 10),
             Text("Closed By: ${c.closedBy ?? c.customerName}", style: const TextStyle(fontStyle: FontStyle.italic)),
           ],

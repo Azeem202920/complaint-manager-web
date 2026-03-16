@@ -35,12 +35,12 @@ class _AdminScreenState extends State<AdminScreen> {
   ];
 
   final List<String> _buildings = [
-    "All", "Expo Tower", "Mazaya", "Yasmeen Tower", "Gate Tower 1", "Gate Tower 2", "Galleria Mall", 
-    "Al Khor Tower C", "Al Tameer", "Rital & Rinad", "Tallah Mall",
-    "Al Khor Mall", "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5",
-    "Naseem", "Nada building", "Hala Building", "Ajman Club",
-    "Salah Ud Din", "Sara Plaza 3", "Jurf 2", "Flower Shop",
-    "Amina Hospital", "Villas", "Sharjah", "Others"
+    "All", "Expo Tower", "Gate Tower 1", "Gate Tower 2", "Al Khor Tower C",
+    "Rital & Rinad",  "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5", "Naseem",
+    "Hala Building", "Nada building", "Al Tameer",  "Tallah Mall", "Al Khor Mall",
+    "Mazaya", "Yasmeen Tower", "Ajman Club", "Salah Ud Din", "Sara Plaza 3", "Jurf 2",
+    "Flower Shop", "Amina Hospital", "Villas", "Sharjah", "Rashdiya", "Galleria Mall",
+    "N/A", "Others"
   ];
 
   final List<String> _statusOptions = [
@@ -101,7 +101,6 @@ class _AdminScreenState extends State<AdminScreen> {
       String serialNo = isCustomerClosed ? 'N/A' : (c.serviceReportNumber ?? 'N/A');
       String displayStatus = c.isDeleted == true ? "DELETED (${c.status})" : c.status;
 
-      // Logic for "Other" Building and Complaint Type in Export
       String displayBuilding = (c.buildingName == "Others" || !_buildings.contains(c.buildingName)) ? c.buildingName : c.buildingName;
       String displayType = (c.complaintType == "Others" || !_complaintTypes.contains(c.complaintType)) ? "${c.description} (Other)" : c.complaintType;
 
@@ -128,7 +127,6 @@ class _AdminScreenState extends State<AdminScreen> {
 
     String csvData = const ListToCsvConverter().convert(rows);
     
-    // SAFE WEB DOWNLOAD BLOCK
     try {
       final bytes = utf8.encode(csvData);
       final blob = html.Blob([bytes]);
@@ -313,7 +311,6 @@ class _AdminScreenState extends State<AdminScreen> {
         bool isStandby = c.status == "Standby";
         bool isDeleted = c.isDeleted == true;
 
-        // Display Logic for "Others"
         String displayBuilding = c.buildingName;
         String displayComplaint = (c.complaintType == "Others" || !_complaintTypes.contains(c.complaintType)) 
             ? "${c.description} (Other)" 

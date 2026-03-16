@@ -26,14 +26,16 @@ class HomeScreen extends StatelessWidget {
     "Tanveer": "4066",
     "Azeem": "6693",
     "Sir": "3067",
-    "Rana Sb": "9999"
+    "Rana Sb": "9999",
+    "Moeen Sb": "8899",
   };
 
   final Map<String, String> _technicianCredentials = const {
     "Charanjeet": "1234", "Noman": "3290", "Raju": "3556",
     "Usman": "4347", "Aftab": "2545", "Yam Bahadur": "9999",
     "Asgar": "7536", "Uzair": "7890", "Majid": "5306",
-    "Sunil": "3790", "User": "11234", "Azeem": "6693", "Rana Sb": "9999"
+    "Sunil": "3790", "User": "11234", "Azeem": "6693",
+    "Sir": "3067", "Tanveer": "4066", "Rana Sb": "9999", "Moeen Sb": "8899"
   };
 
   static Future<void> logout(BuildContext context) async {
