@@ -5,6 +5,10 @@ import '../models/complaint.dart';
 class ComplaintService extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final String collectionPath = 'complaint-manager';
+  
+  // New Config Path
+  final String _configCollection = 'config';
+  final String _configDoc = 'app_settings';
 
   // --- STREAM METHODS ---
 
@@ -36,6 +40,19 @@ class ComplaintService extends ChangeNotifier {
             snapshot.docs.map((doc) => Complaint.fromFirestore(doc)).toList());
   }
 
+  // --- CONFIG METHODS (NEW) ---
+
+  Future<void> updateConfigList(String fieldName, List<String> newList) async {
+    await _db.collection(_configCollection).doc(_configDoc).set({
+      fieldName: newList,
+    }, SetOptions(merge: true));
+  }
+
+  Future<Map<String, dynamic>> getConfig() async {
+    var doc = await _db.collection(_configCollection).doc(_configDoc).get();
+    return doc.data() ?? {};
+  }
+
   // --- WRITE METHODS ---
 
   Future<void> addComplaintWithId(Complaint complaint) async {
@@ -54,14 +71,13 @@ class ComplaintService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// UPDATED: Added materialsUsed and explicit technician tracking for Standby/Resolved
   Future<void> updateLifecycleStatus({
     required String id,
     required String status,
     required String userName, 
     String? reason,          
     String? serialNo,
-    String? materials, // <--- NEW: For Materials Used field
+    String? materials,
     bool isStarting = false,
     bool isStandby = false,
     bool isClosing = false,
@@ -81,7 +97,7 @@ class ComplaintService extends ChangeNotifier {
     if (isStandby) {
       updates['standbyTime'] = FieldValue.serverTimestamp();
       updates['standbyReason'] = reason;   
-      updates['standbyBy'] = userName; // Records which technician put it on standby
+      updates['standbyBy'] = userName;
     }
     
     if (isClosing) {
@@ -89,9 +105,8 @@ class ComplaintService extends ChangeNotifier {
       updates['closedBy'] = userName; 
       updates['finalRemarks'] = reason; 
       updates['serviceReportNumber'] = serialNo;
-      updates['materialsUsed'] = materials ?? ''; // <--- NEW: Reflects in Admin Log
+      updates['materialsUsed'] = materials ?? ''; 
       
-      // Ensure the technician who resolved it is recorded
       if (status == "Resolved") {
         updates['technicianName'] = userName;
       }

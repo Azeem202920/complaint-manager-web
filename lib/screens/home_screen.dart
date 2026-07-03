@@ -116,7 +116,6 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  // ... (Technician and Admin access methods remain unchanged as requested)
   Future<void> _handleTechnicianAccess(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final lastLogin = prefs.getString('tech_last_login');
@@ -275,10 +274,9 @@ class HomeScreen extends StatelessWidget {
               runSpacing: 12,
               alignment: WrapAlignment.center,
               children: [
-                // UPDATED: Linked to the new Username Login Dialog
                 _buildSmallBtn(context, "Register", Colors.blue, () => _showCustomerLoginDialog(context)),
                 _buildSmallBtn(context, "Technician", Colors.orange, () => _handleTechnicianAccess(context)),
-                _buildSmallBtn(context, "Admin", Colors.redAccent, () => _handleAdminAccess(context)),
+                _buildSmallBtn(context, "Settings", Colors.redAccent, () => _handleAdminAccess(context)),
               ],
             ),
           ],

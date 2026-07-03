@@ -1,3 +1,4 @@
+import 'config_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/complaint.dart';
@@ -28,13 +29,13 @@ class _AdminScreenState extends State<AdminScreen> {
   String selectedViewType = "Active"; 
   DateTime? customDate;
 
-  final List<String> _complaintTypes = [
+  List<String> _complaintTypes = [
     "Water leakage", "Low cooling", "Smell coming from AC", 
     "Sound coming from AC", "Cleaning/Service", "New rent out", 
     "Low air speed", "Low fan speed", "AC fan not working", "Others"
   ];
 
-  final List<String> _buildings = [
+  List<String> _buildings = [
     "All", "Expo Tower", "Gate Tower 1", "Gate Tower 2", "Al Khor Tower C",
     "Rital & Rinad",  "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5", "Naseem",
     "Hala Building", "Nada building", "Al Tameer",  "Tallah Mall", "Al Khor Mall",
@@ -150,6 +151,24 @@ class _AdminScreenState extends State<AdminScreen> {
         backgroundColor: Colors.red.shade900,
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => ConfigurationScreen(
+                initialBuildings: _buildings,
+                initialTypes: _complaintTypes,
+                onSave: (newBuildings, newTypes) async {
+                  await service.updateConfigList("buildings", newBuildings);
+                  await service.updateConfigList("types", newTypes);
+                  setState(() {
+                    _buildings = newBuildings;
+                    _complaintTypes = newTypes;
+                  });
+                  Navigator.pop(context);
+                },
+              )));
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.filter_alt_off),
             onPressed: () => setState(() {
               selectedStatus = "All"; selectedBuilding = "All"; selectedTimeFrame = "All";
@@ -209,52 +228,55 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Widget _buildFilterRow(String label, List<String> opts, Map<String, int> counts) {
     return SizedBox(
-      height: 40,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        itemCount: opts.length,
-        itemBuilder: (context, i) {
-          String opt = opts[i];
-          String displayLabel = opt;
-          
-          if (label == "Status") {
-            int n = (opt == "All") ? (counts["StatusAll"] ?? 0) : (counts[opt] ?? 0);
-            displayLabel = "$opt $n";
-          } else if (label == "Record Type") {
-            int n = (opt == "All") ? (counts["AllView"] ?? 0) : (opt == "Active" ? (counts["ActiveView"] ?? 0) : (counts["DeletedView"] ?? 0));
-            displayLabel = "$opt $n";
-          }
+      height: 45,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: true),
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          itemCount: opts.length,
+          itemBuilder: (context, i) {
+            String opt = opts[i];
+            String displayLabel = opt;
+            
+            if (label == "Status") {
+              int n = (opt == "All") ? (counts["StatusAll"] ?? 0) : (counts[opt] ?? 0);
+              displayLabel = "$opt $n";
+            } else if (label == "Record Type") {
+              int n = (opt == "All") ? (counts["AllView"] ?? 0) : (opt == "Active" ? (counts["ActiveView"] ?? 0) : (counts["DeletedView"] ?? 0));
+              displayLabel = "$opt $n";
+            }
 
-          bool isSelected = (label == "Status" && selectedStatus == opt) ||
-                            (label == "Building" && selectedBuilding == opt) ||
-                            (label == "Record Type" && selectedViewType == opt) ||
-                            (label == "Time" && selectedTimeFrame == opt);
+            bool isSelected = (label == "Status" && selectedStatus == opt) ||
+                              (label == "Building" && selectedBuilding == opt) ||
+                              (label == "Record Type" && selectedViewType == opt) ||
+                              (label == "Time" && selectedTimeFrame == opt);
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: ChoiceChip(
-              label: Text(opt == "Select Date" && customDate != null ? DateFormat('dd/MM').format(customDate!) : displayLabel, style: const TextStyle(fontSize: 11)),
-              selected: isSelected,
-              selectedColor: Colors.red.shade900,
-              labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black, fontSize: 11),
-              onSelected: (val) async {
-                if (!val) return;
-                if (opt == "Select Date") {
-                  DateTime? d = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2025), lastDate: DateTime.now());
-                  if (d != null) setState(() { selectedTimeFrame = "Select Date"; customDate = d; });
-                } else {
-                  setState(() {
-                    if (label == "Status") selectedStatus = opt;
-                    if (label == "Building") selectedBuilding = opt;
-                    if (label == "Record Type") selectedViewType = opt;
-                    if (label == "Time") selectedTimeFrame = opt;
-                  });
-                }
-              },
-            ),
-          );
-        },
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: ChoiceChip(
+                label: Text(opt == "Select Date" && customDate != null ? DateFormat('dd/MM').format(customDate!) : displayLabel, style: const TextStyle(fontSize: 11)),
+                selected: isSelected,
+                selectedColor: Colors.red.shade900,
+                labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black, fontSize: 11),
+                onSelected: (val) async {
+                  if (!val) return;
+                  if (opt == "Select Date") {
+                    DateTime? d = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2025), lastDate: DateTime.now());
+                    if (d != null) setState(() { selectedTimeFrame = "Select Date"; customDate = d; });
+                  } else {
+                    setState(() {
+                      if (label == "Status") selectedStatus = opt;
+                      if (label == "Building") selectedBuilding = opt;
+                      if (label == "Record Type") selectedViewType = opt;
+                      if (label == "Time") selectedTimeFrame = opt;
+                    });
+                  }
+                },
+              ),
+            );
+          },
+        ),
       ),
     );
   }
