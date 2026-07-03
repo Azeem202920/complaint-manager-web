@@ -20,6 +20,11 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   String selectedTimeFrame = "All";
   DateTime? customDate;
 
+  // Quick Select Material Options
+  final List<String> _quickMaterials = const [
+    "Capacitor 55uF","Contactor 3P 220v","Capacitor 5uF", "Contactor 2P 220v", "Refrigerant R410a","Refrigerant R22",  "Breaker", "Filter", "Fan Motor", "Relay"
+  ];
+
   final List<String> _buildings = [
     "All", "Expo Tower", "Gate Tower 1", "Gate Tower 2", "Al Khor Tower C",
     "Rital & Rinad",  "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5", "Naseem",
@@ -176,12 +181,9 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                 overflow: TextOverflow.ellipsis, 
                 style: TextStyle(color: Colors.blueGrey.shade700, fontSize: 12, fontStyle: FontStyle.italic)
               ),
-            
-            // Logic to display assigned technician name from your model
             if (c.status != "Pending" && c.status != "Resolved" && c.status != "Closed by Customer")
                Text("Tech: ${c.technicianName ?? c.standbyBy ?? 'Assigned'}", 
                  style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
-            
             if (isStandby) Text("Reason: ${c.standbyReason}", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
             Text(DateFormat('dd MMM, hh:mm a').format(c.createdAt), style: const TextStyle(fontSize: 11, color: Colors.grey)),
           ],
@@ -285,43 +287,53 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Complete Task"),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: reportCtrl, decoration: const InputDecoration(labelText: "Service Report #")),
-              const SizedBox(height: 10),
-              TextField(controller: materialsCtrl, decoration: const InputDecoration(labelText: "Materials Used")),
-              const SizedBox(height: 10),
-              TextField(controller: remarksCtrl, maxLines: 3, decoration: const InputDecoration(labelText: "Final Remarks", border: OutlineInputBorder())),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("Complete Task"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: reportCtrl, decoration: const InputDecoration(labelText: "Service Report #")),
+                const SizedBox(height: 10),
+                TextField(controller: materialsCtrl, decoration: const InputDecoration(labelText: "Materials Used")),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8.0,
+                  children: _quickMaterials.map((m) => ActionChip(
+                    label: Text(m, style: const TextStyle(fontSize: 12)),
+                    onPressed: () => setDialogState(() => materialsCtrl.text += (materialsCtrl.text.isEmpty ? m : ", $m")),
+                  )).toList(),
+                ),
+                const SizedBox(height: 10),
+                TextField(controller: remarksCtrl, maxLines: 3, decoration: const InputDecoration(labelText: "Final Remarks", border: OutlineInputBorder())),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+            ElevatedButton(
+              onPressed: () async {
+                if (remarksCtrl.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Remarks are required")));
+                  return;
+                }
+                final name = await _getTechnicianName();
+                await service.updateLifecycleStatus(
+                  id: c.id, 
+                  status: "Resolved", 
+                  userName: name, 
+                  reason: remarksCtrl.text, 
+                  serialNo: reportCtrl.text,
+                  materials: materialsCtrl.text,
+                  isClosing: true
+                );
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: const Text("SUBMIT"),
+            )
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
-          ElevatedButton(
-            onPressed: () async {
-              if (remarksCtrl.text.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Remarks are required")));
-                return;
-              }
-              final name = await _getTechnicianName();
-              await service.updateLifecycleStatus(
-                id: c.id, 
-                status: "Resolved", 
-                userName: name, 
-                reason: remarksCtrl.text, 
-                serialNo: reportCtrl.text,
-                materials: materialsCtrl.text,
-                isClosing: true
-              );
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const Text("SUBMIT"),
-          )
-        ],
       ),
     );
   }
@@ -345,8 +357,8 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
             ],
             const Divider(),
             Text("Report #: ${c.serviceReportNumber ?? 'N/A'}"),
-            Text("Materials: ${c.materialsUsed}"),
-            Text("Final Remarks: ${c.finalRemarks}"),
+            Text("Materials: ${c.materialsUsed ?? 'None'}"),
+            Text("Final Remarks: ${c.finalRemarks ?? 'None'}"),
             const SizedBox(height: 10),
             Text("Closed By: ${c.closedBy ?? c.customerName}", style: const TextStyle(fontStyle: FontStyle.italic)),
           ],
