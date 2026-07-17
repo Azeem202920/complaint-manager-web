@@ -22,6 +22,14 @@ class ComplaintService extends ChangeNotifier {
             .toList());
   }
 
+// Inside ComplaintService class
+Stream<DocumentSnapshot> getChillerStatusStream() {
+  return FirebaseFirestore.instance
+      .collection('system_data')
+      .doc('chiller_status')
+      .snapshots();
+}
+
   Stream<List<Complaint>> getComplaintsByPhone(String phone) {
     return _db
         .collection(collectionPath)

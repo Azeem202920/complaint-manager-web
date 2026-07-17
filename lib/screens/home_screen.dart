@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dashboard_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/complaint_service.dart';
@@ -51,6 +52,30 @@ class HomeScreen extends StatelessWidget {
     
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Logged out successfully")),
+    );
+  }
+
+  void _showDashboardPinDialog(BuildContext context) {
+    final controller = TextEditingController();
+    void submit() {
+      if (controller.text == "6693") {
+        Navigator.pop(context);
+        Navigator.push(context, MaterialPageRoute(builder: (context) => const DashboardScreen()));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid PIN")));
+      }
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Dashboard Access"),
+        content: TextField(controller: controller, obscureText: true, keyboardType: TextInputType.number),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(onPressed: submit, child: const Text("Enter")),
+        ],
+      ),
     );
   }
 
@@ -277,6 +302,7 @@ class HomeScreen extends StatelessWidget {
                 _buildSmallBtn(context, "Register", Colors.blue, () => _showCustomerLoginDialog(context)),
                 _buildSmallBtn(context, "Technician", Colors.orange, () => _handleTechnicianAccess(context)),
                 _buildSmallBtn(context, "Settings", Colors.redAccent, () => _handleAdminAccess(context)),
+                _buildSmallBtn(context, "Dashboard", Colors.green, () => _showDashboardPinDialog(context)),
               ],
             ),
           ],
