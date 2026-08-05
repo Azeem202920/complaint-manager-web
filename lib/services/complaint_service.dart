@@ -79,6 +79,25 @@ Stream<DocumentSnapshot> getChillerStatusStream() {
     notifyListeners();
   }
 
+  Future<void> updateComplaintWithLog(Complaint complaint, String newStatus, String userName, String remarks) async {
+    List<Map<String, dynamic>> logs = List.from(complaint.timelineLogs ?? []);
+    
+    // Append the new status change entry
+    logs.add({
+      'status': newStatus,
+      'userName': userName,
+      'timestamp': DateTime.now().toIso8601String(),
+      'remarks': remarks,
+    });
+
+    Complaint updated = complaint.copyWith(
+      status: newStatus,
+      timelineLogs: logs,
+    );
+
+    await updateComplaint(updated);
+  }
+
   Future<void> updateLifecycleStatus({
     required String id,
     required String status,
@@ -90,10 +109,27 @@ Stream<DocumentSnapshot> getChillerStatusStream() {
     bool isStandby = false,
     bool isClosing = false,
   }) async {
+    // Fetch current complaint first to safely preserve and update timeline logs
+    DocumentSnapshot docSnap = await _db.collection(collectionPath).doc(id).get();
+    if (!docSnap.exists) return;
+    
+    Complaint complaint = Complaint.fromFirestore(docSnap);
+    List<Map<String, dynamic>> logs = List.from(complaint.timelineLogs ?? []);
+
+    // Push action log entry to timelineLogs array
+    String logRemarks = reason ?? (isClosing ? (serialNo ?? '') : '');
+    logs.add({
+      'status': status,
+      'userName': userName,
+      'timestamp': DateTime.now().toIso8601String(),
+      'remarks': logRemarks,
+    });
+
     Map<String, dynamic> updates = {
       'status': status,
       'lastUpdatedBy': userName, 
       'lastUpdatedAt': FieldValue.serverTimestamp(),
+      'timelineLogs': logs,
     };
 
     if (isStarting) {

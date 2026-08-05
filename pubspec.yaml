@@ -30,6 +30,10 @@ dependencies:
   google_maps_flutter: ^2.5.0
   geolocator: ^11.1.0
 
+  # PDF Generation & Printing
+  pdf: ^3.10.7
+  printing: ^5.13.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

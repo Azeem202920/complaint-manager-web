@@ -69,60 +69,108 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
           )
         ],
       ),
-      body: Column(
-        children: [
-          _buildFilterBar(),
-          const Divider(height: 1),
-          Expanded(
-            child: StreamBuilder<List<Complaint>>(
-              stream: service.getAdminFullHistory(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+      body: StreamBuilder<List<Complaint>>(
+        stream: service.getAdminFullHistory(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-                final filteredList = snapshot.data!.where((c) {
-                  if (c.isDeleted == true) return false;
+          final all = snapshot.data!;
+          Map<String, int> counts = _calculateLiveCounts(all);
 
-                  bool matchStatus = selectedStatus == "All" || c.status == selectedStatus;
-                  bool matchBuilding = selectedBuilding == "All" || c.buildingName == selectedBuilding;
-                  
-                  bool matchTime = true;
-                  if (selectedTimeFrame == "Today") matchTime = _isSameDay(c.createdAt, DateTime.now());
-                  if (selectedTimeFrame == "Yesterday") matchTime = _isSameDay(c.createdAt, DateTime.now().subtract(const Duration(days: 1)));
-                  if (selectedTimeFrame == "Select Date" && customDate != null) matchTime = _isSameDay(c.createdAt, customDate!);
+          return Column(
+            children: [
+              _buildFilterBar(counts),
+              const Divider(height: 1),
+              Expanded(
+                child: Builder(
+                  builder: (context) {
+                    final filteredList = all.where((c) {
+                      if (c.isDeleted == true) return false;
 
-                  return matchStatus && matchBuilding && matchTime;
-                }).toList();
+                      // Auto-hide rule for Resolved complaints:
+                      // Hide if resolved before today
+                      if (c.status == "Resolved" || c.status == "Closed by Customer") {
+                        if (!_isSameDay(c.createdAt, DateTime.now())) {
+                          return false;
+                        }
+                      }
 
-                if (filteredList.isEmpty) return const Center(child: Text("No tasks found."));
+                      bool matchStatus = selectedStatus == "All" || c.status == selectedStatus;
+                      bool matchBuilding = selectedBuilding == "All" || c.buildingName == selectedBuilding;
+                      
+                      bool matchTime = true;
+                      if (selectedTimeFrame == "Today") matchTime = _isSameDay(c.createdAt, DateTime.now());
+                      if (selectedTimeFrame == "Yesterday") matchTime = _isSameDay(c.createdAt, DateTime.now().subtract(const Duration(days: 1)));
+                      if (selectedTimeFrame == "Select Date" && customDate != null) matchTime = _isSameDay(c.createdAt, customDate!);
 
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: filteredList.length,
-                  itemBuilder: (context, index) => _buildTaskCard(context, service, filteredList[index]),
-                );
-              },
-            ),
-          ),
-        ],
+                      return matchStatus && matchBuilding && matchTime;
+                    }).toList();
+
+                    if (filteredList.isEmpty) return const Center(child: Text("No tasks found."));
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: filteredList.length,
+                      itemBuilder: (context, index) => _buildTaskCard(context, service, filteredList[index], all),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildFilterBar() {
+  Map<String, int> _calculateLiveCounts(List<Complaint> all) {
+    Map<String, int> map = {};
+    
+    final baseFiltered = all.where((c) {
+      if (c.isDeleted == true) return false;
+
+      if (c.status == "Resolved" || c.status == "Closed by Customer") {
+        if (!_isSameDay(c.createdAt, DateTime.now())) {
+          return false;
+        }
+      }
+
+      bool matchBuilding = selectedBuilding == "All" || c.buildingName == selectedBuilding;
+      
+      bool matchTime = true;
+      if (selectedTimeFrame == "Today") matchTime = _isSameDay(c.createdAt, DateTime.now());
+      if (selectedTimeFrame == "Yesterday") matchTime = _isSameDay(c.createdAt, DateTime.now().subtract(const Duration(days: 1)));
+      if (selectedTimeFrame == "Select Date" && customDate != null) matchTime = _isSameDay(c.createdAt, customDate!);
+
+      return matchBuilding && matchTime;
+    }).toList();
+
+    for (var s in _statusOptions) {
+      if (s == "All") {
+        map["StatusAll"] = baseFiltered.length;
+      } else {
+        map[s] = baseFiltered.where((c) => c.status == s).length;
+      }
+    }
+
+    return map;
+  }
+
+  Widget _buildFilterBar(Map<String, int> counts) {
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         children: [
-          _buildFilterRow("Status", _statusOptions),
-          _buildFilterRow("Building", _buildings),
-          _buildFilterRow("Time", _timeOptions),
+          _buildFilterRow("Status", _statusOptions, counts),
+          _buildFilterRow("Building", _buildings, counts),
+          _buildFilterRow("Time", _timeOptions, counts),
         ],
       ),
     );
   }
 
-  Widget _buildFilterRow(String label, List<String> opts) {
+  Widget _buildFilterRow(String label, List<String> opts, Map<String, int> counts) {
     return SizedBox(
       height: 40,
       child: ListView.builder(
@@ -131,6 +179,13 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
         itemCount: opts.length,
         itemBuilder: (context, i) {
           String opt = opts[i];
+          String displayLabel = opt;
+
+          if (label == "Status") {
+            int n = (opt == "All") ? (counts["StatusAll"] ?? 0) : (counts[opt] ?? 0);
+            displayLabel = "$opt $n";
+          }
+
           bool isSelected = (label == "Status" && selectedStatus == opt) ||
                             (label == "Building" && selectedBuilding == opt) ||
                             (label == "Time" && selectedTimeFrame == opt);
@@ -138,7 +193,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
             child: ChoiceChip(
-              label: Text(opt == "Select Date" && customDate != null ? DateFormat('dd/MM').format(customDate!) : opt, 
+              label: Text(opt == "Select Date" && customDate != null ? DateFormat('dd/MM').format(customDate!) : displayLabel, 
                           style: const TextStyle(fontSize: 11)),
               selected: isSelected,
               selectedColor: Colors.orange.shade800,
@@ -162,44 +217,135 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     );
   }
 
-  Widget _buildTaskCard(BuildContext context, ComplaintService service, Complaint c) {
+  Widget _buildTaskCard(BuildContext context, ComplaintService service, Complaint c, List<Complaint> allComplaints) {
     bool isLocked = c.status == "Resolved" || c.status == "Closed by Customer";
     bool isStandby = c.status == "Standby";
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       elevation: 2,
-      child: ListTile(
-        title: Text("${c.buildingName} - Flat ${c.flatNumber}", style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Issue: ${c.complaintType}"),
-            if (c.description.isNotEmpty) 
-              Text("Details: ${c.description}", 
-                maxLines: 1, 
-                overflow: TextOverflow.ellipsis, 
-                style: TextStyle(color: Colors.blueGrey.shade700, fontSize: 12, fontStyle: FontStyle.italic)
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: ListTile(
+          title: Text("${c.buildingName} - Flat ${c.flatNumber}", style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Issue: ${c.complaintType}"),
+              if (c.description.isNotEmpty) 
+                Text("Details: ${c.description}", 
+                  maxLines: 1, 
+                  overflow: TextOverflow.ellipsis, 
+                  style: TextStyle(color: Colors.blueGrey.shade700, fontSize: 12, fontStyle: FontStyle.italic)
+                ),
+              if (c.status != "Pending" && c.status != "Resolved" && c.status != "Closed by Customer")
+                 Text("Tech: ${c.technicianName ?? c.standbyBy ?? 'Assigned'}", 
+                   style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
+              if (isStandby) Text("Reason: ${c.standbyReason}", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(DateFormat('dd MMM, hh:mm a').format(c.createdAt), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  // Flat History Button
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                      minimumSize: const Size(0, 28),
+                      side: BorderSide(color: Colors.orange.shade800),
+                    ),
+                    icon: Icon(Icons.history, size: 14, color: Colors.orange.shade800),
+                    label: Text("Flat History", style: TextStyle(fontSize: 11, color: Colors.orange.shade800)),
+                    onPressed: () => _showFlatHistoryDialog(context, c, allComplaints),
+                  ),
+                ],
               ),
-            if (c.status != "Pending" && c.status != "Resolved" && c.status != "Closed by Customer")
-               Text("Tech: ${c.technicianName ?? c.standbyBy ?? 'Assigned'}", 
-                 style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
-            if (isStandby) Text("Reason: ${c.standbyReason}", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
-            Text(DateFormat('dd MMM, hh:mm a').format(c.createdAt), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-          ],
-        ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: isLocked ? Colors.grey.shade200 : (isStandby ? Colors.orange.shade100 : Colors.blue.shade100),
-            borderRadius: BorderRadius.circular(4)
+            ],
           ),
-          child: Text(c.status, style: TextStyle(
-            color: isLocked ? Colors.grey.shade700 : (isStandby ? Colors.orange.shade900 : Colors.blue.shade900),
-            fontWeight: FontWeight.bold, fontSize: 11
-          )),
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isLocked ? Colors.grey.shade200 : (isStandby ? Colors.orange.shade100 : Colors.blue.shade100),
+              borderRadius: BorderRadius.circular(4)
+            ),
+            child: Text(c.status, style: TextStyle(
+              color: isLocked ? Colors.grey.shade700 : (isStandby ? Colors.orange.shade900 : Colors.blue.shade900),
+              fontWeight: FontWeight.bold, fontSize: 11
+            )),
+          ),
+          onTap: () => isLocked ? _showDetails(context, c) : _showActionSheet(context, service, c),
         ),
-        onTap: () => isLocked ? _showDetails(context, c) : _showActionSheet(context, service, c),
+      ),
+    );
+  }
+
+  void _showFlatHistoryDialog(BuildContext context, Complaint currentComplaint, List<Complaint> allComplaints) {
+    // Filter all complaints for the exact same building and flat number, up to 2 years back
+    final twoYearsAgo = DateTime.now().subtract(const Duration(days: 730));
+    final flatHistory = allComplaints.where((c) {
+      if (c.isDeleted == true) return false;
+      if (c.id == currentComplaint.id) return false; // Exclude current active card if desired, or keep it. Let's show all past ones + others for this flat.
+      
+      bool sameBuilding = c.buildingName.trim().toLowerCase() == currentComplaint.buildingName.trim().toLowerCase();
+      bool sameFlat = c.flatNumber.trim().toLowerCase() == currentComplaint.flatNumber.trim().toLowerCase();
+      bool withinTwoYears = c.createdAt.isAfter(twoYearsAgo);
+
+      return sameBuilding && sameFlat && withinTwoYears;
+    }).toList();
+
+    // Sort descending by date (newest first)
+    flatHistory.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("History: ${currentComplaint.buildingName} - ${currentComplaint.flatNumber}", style: const TextStyle(fontSize: 16)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: flatHistory.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: Text("No previous complaint history found for this flat in the past 2 years.", textAlign: TextAlign.center),
+                )
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: flatHistory.length,
+                  itemBuilder: (context, index) {
+                    final h = flatHistory[index];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      color: Colors.grey.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(h.complaintType, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                Text(h.status, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: h.status == "Resolved" ? Colors.green : Colors.orange)),
+                              ],
+                            ),
+                            if (h.description.isNotEmpty)
+                              Text("Remarks: ${h.description}", style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+                            if (h.finalRemarks != null && h.finalRemarks!.isNotEmpty)
+                              Text("Tech Notes: ${h.finalRemarks}", style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+                            const SizedBox(height: 4),
+                            Text(DateFormat('dd MMM yyyy, hh:mm a').format(h.createdAt), style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("CLOSE"),
+          ),
+        ],
       ),
     );
   }

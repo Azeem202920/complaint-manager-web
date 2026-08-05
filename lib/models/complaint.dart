@@ -16,8 +16,9 @@ class Complaint {
   final String standbyReason;
   final String? technicianName;
   final String? serviceReportNumber;
-  final String materialsUsed; // <--- NEW
+  final String materialsUsed;
   final List<String> imageUrls;
+  final List<Map<String, dynamic>> timelineLogs;
   final bool isDeleted;
   
   // Lifecycle & Audit Fields
@@ -45,8 +46,9 @@ class Complaint {
     required this.standbyReason,
     this.technicianName,
     this.serviceReportNumber,
-    this.materialsUsed = '', // <--- NEW
+    this.materialsUsed = '',
     this.imageUrls = const [],
+    this.timelineLogs = const [],
     this.isDeleted = false,
     this.startTime,
     this.standbyTime,
@@ -72,11 +74,12 @@ class Complaint {
     String? standbyBy,
     String? closedBy,
     String? serviceReportNumber,
-    String? materialsUsed, // <--- NEW
+    String? materialsUsed,
     bool? isDeleted,
     String? deleteRemarks,
     String? finalRemarks,
     List<String>? imageUrls,
+    List<Map<String, dynamic>>? timelineLogs,
   }) {
     return Complaint(
       id: id ?? this.id,
@@ -87,6 +90,7 @@ class Complaint {
       createdAt: this.createdAt,
       priority: this.priority,
       imageUrls: imageUrls ?? this.imageUrls,
+      timelineLogs: timelineLogs ?? this.timelineLogs,
       buildingName: buildingName ?? this.buildingName,
       flatNumber: flatNumber ?? this.flatNumber,
       complaintType: complaintType ?? this.complaintType,
@@ -100,7 +104,7 @@ class Complaint {
       standbyBy: standbyBy ?? this.standbyBy,
       closedBy: closedBy ?? this.closedBy,
       serviceReportNumber: serviceReportNumber ?? this.serviceReportNumber,
-      materialsUsed: materialsUsed ?? this.materialsUsed, // <--- NEW
+      materialsUsed: materialsUsed ?? this.materialsUsed,
       isDeleted: isDeleted ?? this.isDeleted,
       deleteRemarks: deleteRemarks ?? this.deleteRemarks,
       finalRemarks: finalRemarks ?? this.finalRemarks,
@@ -115,6 +119,14 @@ class Complaint {
       if (value is Timestamp) return value.toDate();
       if (value is String) return DateTime.tryParse(value);
       return null;
+    }
+
+    // Safely parse list of maps from Firestore
+    List<Map<String, dynamic>> parsedTimelineLogs = [];
+    if (data['timelineLogs'] != null) {
+      parsedTimelineLogs = List<Map<String, dynamic>>.from(
+        (data['timelineLogs'] as List).map((item) => Map<String, dynamic>.from(item)),
+      );
     }
 
     return Complaint(
@@ -133,8 +145,9 @@ class Complaint {
       standbyReason: data['standbyReason'] ?? '',
       technicianName: data['technicianName'],
       serviceReportNumber: data['serviceReportNumber'],
-      materialsUsed: data['materialsUsed'] ?? '', // <--- NEW
+      materialsUsed: data['materialsUsed'] ?? '',
       imageUrls: List<String>.from(data['imageUrls'] ?? []),
+      timelineLogs: parsedTimelineLogs,
       isDeleted: data['isDeleted'] ?? false,
       startTime: parseFlexibleDate(data['startTime']),
       standbyTime: parseFlexibleDate(data['standbyTime']),
@@ -162,8 +175,9 @@ class Complaint {
       'standbyReason': standbyReason,
       'technicianName': technicianName,
       'serviceReportNumber': serviceReportNumber,
-      'materialsUsed': materialsUsed, // <--- NEW
+      'materialsUsed': materialsUsed,
       'imageUrls': imageUrls,
+      'timelineLogs': timelineLogs,
       'isDeleted': isDeleted,
       'startTime': startTime != null ? Timestamp.fromDate(startTime!) : null,
       'standbyTime': standbyTime != null ? Timestamp.fromDate(standbyTime!) : null,
@@ -174,4 +188,7 @@ class Complaint {
       'finalRemarks': finalRemarks,
     };
   }
+
+  // Alias method for convenience if toJson() is used elsewhere in services
+  Map<String, dynamic> toJson() => toMap();
 }
