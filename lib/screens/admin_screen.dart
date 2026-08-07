@@ -1,5 +1,7 @@
 import 'config_screen.dart';
+import 'dashboard_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import '../models/complaint.dart';
 import '../services/complaint_service.dart';
@@ -11,34 +13,25 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
  
-// Standard Flutter way to check for web without crashing
-import 'package:flutter/foundation.dart' show kIsWeb;
- 
-// This is the trick: We only import html on web. 
-// On mobile, this variable will just be null and ignored.
 import 'dart:html' as html if (dart.library.io) 'package:flutter/material.dart';
  
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
- 
   @override
   State<AdminScreen> createState() => _AdminScreenState();
 }
  
 class _AdminScreenState extends State<AdminScreen> {
-  // Filter States
   String selectedStatus = "All";
   String selectedBuilding = "All";
   String selectedTimeFrame = "All";
   String selectedViewType = "Active"; 
   DateTime? customDate;
- 
   List<String> _complaintTypes = [
     "Water leakage", "Low cooling", "Smell coming from AC", 
     "Sound coming from AC", "Cleaning/Service", "New rent out", 
     "Low air speed", "Low fan speed", "AC fan not working", "Others"
   ];
- 
   List<String> _buildings = [
     "All", "Expo Tower", "Gate Tower 1", "Gate Tower 2", "Al Khor Tower C",
     "Rital & Rinad",  "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5", "Naseem",
@@ -47,18 +40,36 @@ class _AdminScreenState extends State<AdminScreen> {
     "Flower Shop", "Amina Hospital", "Villas", "Sharjah", "Rashdiya", "Galleria Mall",
     "N/A", "Others"
   ];
- 
   final List<String> _statusOptions = [
     "All", "Pending", "In Progress", "Standby", "Resolved", "Closed by Customer"
   ];
- 
   String _formatDate(DateTime? date) => 
       date != null ? DateFormat('yyyy-MM-dd HH:mm').format(date) : "N/A";
- 
   bool _isSameDay(DateTime d1, DateTime d2) =>
       d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
- 
-  // --- Export Logic ---
+      
+  void _showDashboardPinDialog(BuildContext context) {
+    final controller = TextEditingController();
+    void submit() {
+      if (controller.text == "6693") {
+        Navigator.pop(context);
+        Navigator.push(context, MaterialPageRoute(builder: (context) => const DashboardScreen()));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid PIN")));
+      }
+    }
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Dashboard Access"),
+        content: TextField(controller: controller, obscureText: true, keyboardType: TextInputType.number),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(onPressed: submit, child: const Text("Enter")),
+        ],
+      ),
+    );
+  }
   void _showExportRangeDialog(List<Complaint> allComplaints) async {
     DateTimeRange? range = await showDateRangePicker(
       context: context,
@@ -66,12 +77,10 @@ class _AdminScreenState extends State<AdminScreen> {
       lastDate: DateTime.now().add(const Duration(days: 1)),
       helpText: "Select Date Range for CSV Export",
     );
- 
     if (range != null) {
       _downloadFilteredReport(allComplaints, range);
     }
   }
- 
   void _downloadFilteredReport(List<Complaint> allComplaints, DateTimeRange range) {
     if (!kIsWeb) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -79,10 +88,9 @@ class _AdminScreenState extends State<AdminScreen> {
       );
       return;
     }
- 
     final exportData = allComplaints.where((c) {
       bool dateMatch = c.createdAt.isAfter(range.start) && 
-                     c.createdAt.isBefore(range.end.add(const Duration(days: 1)));
+                       c.createdAt.isBefore(range.end.add(const Duration(days: 1)));
       
       bool viewMatch = true;
       if (selectedViewType == "Active") viewMatch = (c.isDeleted != true);
@@ -90,7 +98,6 @@ class _AdminScreenState extends State<AdminScreen> {
       
       return dateMatch && viewMatch;
     }).toList();
- 
     List<List<dynamic>> rows = [];
     rows.add([
       "ID", "Building", "Flat", "Type", "Status", 
@@ -99,16 +106,13 @@ class _AdminScreenState extends State<AdminScreen> {
       "Standby_By", "Standby_Time", "Standby_Remarks", 
       "Closed_By", "Close_Time", "Serial_No", "Materials", "Closing_Remarks"
     ]);
- 
     for (var c in exportData) {
       bool isCustomerClosed = c.status == "Closed by Customer";
       String closerName = isCustomerClosed ? (c.customerName) : (c.closedBy ?? 'N/A');
       String serialNo = isCustomerClosed ? 'N/A' : (c.serviceReportNumber ?? 'N/A');
       String displayStatus = c.isDeleted == true ? "DELETED (${c.status})" : c.status;
- 
-      String displayBuilding = (c.buildingName == "Others" || !_buildings.contains(c.buildingName)) ? c.buildingName : c.buildingName;
+      String displayBuilding = c.buildingName;
       String displayType = (c.complaintType == "Others" || !_complaintTypes.contains(c.complaintType)) ? "${c.description} (Other)" : c.complaintType;
- 
       rows.add([
         c.id,
         displayBuilding,
@@ -125,11 +129,10 @@ class _AdminScreenState extends State<AdminScreen> {
         closerName,
         _formatDate(c.completedAt),
         serialNo,
-        c.materialsUsed ?? 'N/A',
+        c.materialsUsed,
         c.finalRemarks.replaceAll('\n', ' ')
       ]);
     }
- 
     String csvData = const ListToCsvConverter().convert(rows);
     
     try {
@@ -144,7 +147,57 @@ class _AdminScreenState extends State<AdminScreen> {
       debugPrint("Download failed or not supported on this platform: $e");
     }
   }
-  // --- Master Service Report PDF Generator ---
+  void _showMediaDialog(BuildContext context, Complaint c) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Images & Signatures (${c.id})"),
+        content: SizedBox(
+          width: 500,
+          height: 450,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Before Work Picture:", style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                c.beforeImageUrl != null && c.beforeImageUrl!.isNotEmpty
+                    ? Image.network(c.beforeImageUrl!, height: 150, fit: BoxFit.cover, errorBuilder: (_,__,___) => const Text("Failed to load image"))
+                    : const Text("No image captured", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+                const Divider(height: 20),
+                const Text("Standby Picture:", style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                c.standbyImageUrl != null && c.standbyImageUrl!.isNotEmpty
+                    ? Image.network(c.standbyImageUrl!, height: 150, fit: BoxFit.cover, errorBuilder: (_,__,___) => const Text("Failed to load image"))
+                    : const Text("No standby image captured", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+                const Divider(height: 20),
+                const Text("After Work Picture:", style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                c.afterImageUrl != null && c.afterImageUrl!.isNotEmpty
+                    ? Image.network(c.afterImageUrl!, height: 150, fit: BoxFit.cover, errorBuilder: (_,__,___) => const Text("Failed to load image"))
+                    : const Text("No image captured", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+                const Divider(height: 20),
+                const Text("Technician Signature:", style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                c.technicianSignatureUrl != null && c.technicianSignatureUrl!.isNotEmpty
+                    ? Image.network(c.technicianSignatureUrl!, height: 100, fit: BoxFit.contain, errorBuilder: (_,__,___) => const Text("Failed to load signature"))
+                    : const Text("No technician signature", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+                const Divider(height: 20),
+                const Text("Customer Signature:", style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                c.customerSignatureUrl != null && c.customerSignatureUrl!.isNotEmpty
+                    ? Image.network(c.customerSignatureUrl!, height: 100, fit: BoxFit.contain, errorBuilder: (_,__,___) => const Text("Failed to load signature"))
+                    : const Text("No customer signature", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CLOSE"))
+        ],
+      ),
+    );
+  }
   Future<void> _generateMasterServiceReportPdf(BuildContext context, ComplaintService service, Complaint c) async {
     List<Complaint> flatHistory = [];
     try {
@@ -157,6 +210,36 @@ class _AdminScreenState extends State<AdminScreen> {
       flatHistory = [c];
     }
     
+    pw.ImageProvider? beforeImg;
+    pw.ImageProvider? standbyImg;
+    pw.ImageProvider? afterImg;
+    pw.ImageProvider? techSigImg;
+    pw.ImageProvider? custSigImg;
+    try {
+      if (c.beforeImageUrl != null && c.beforeImageUrl!.isNotEmpty) {
+        beforeImg = await networkImage(c.beforeImageUrl!);
+      }
+    } catch (_) {}
+    try {
+      if (c.standbyImageUrl != null && c.standbyImageUrl!.isNotEmpty) {
+        standbyImg = await networkImage(c.standbyImageUrl!);
+      }
+    } catch (_) {}
+    try {
+      if (c.afterImageUrl != null && c.afterImageUrl!.isNotEmpty) {
+        afterImg = await networkImage(c.afterImageUrl!);
+      }
+    } catch (_) {}
+    try {
+      if (c.technicianSignatureUrl != null && c.technicianSignatureUrl!.isNotEmpty) {
+        techSigImg = await networkImage(c.technicianSignatureUrl!);
+      }
+    } catch (_) {}
+    try {
+      if (c.customerSignatureUrl != null && c.customerSignatureUrl!.isNotEmpty) {
+        custSigImg = await networkImage(c.customerSignatureUrl!);
+      }
+    } catch (_) {}
     final pdf = pw.Document();
     pdf.addPage(
       pw.MultiPage(
@@ -164,7 +247,6 @@ class _AdminScreenState extends State<AdminScreen> {
         margin: const pw.EdgeInsets.all(32),
         build: (pw.Context context) {
           return [
-            // Header
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
@@ -187,7 +269,6 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
             pw.Divider(thickness: 1.5, color: PdfColors.red900),
             pw.SizedBox(height: 10),
-            // Complaint Details Section
             pw.Text("COMPLAINT INFORMATION", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
             pw.SizedBox(height: 6),
             pw.Container(
@@ -221,7 +302,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   ),
                   pw.SizedBox(height: 6),
                   pw.Text("Description / Remarks: ${c.description.isNotEmpty ? c.description : 'N/A'}", style: const pw.TextStyle(fontSize: 10)),
-                  if (c.materialsUsed != null && c.materialsUsed!.isNotEmpty) ...[
+                  if (c.materialsUsed.isNotEmpty) ...[
                     pw.SizedBox(height: 6),
                     pw.Text("Materials Used: ${c.materialsUsed}", style: const pw.TextStyle(fontSize: 10)),
                   ],
@@ -233,14 +314,74 @@ class _AdminScreenState extends State<AdminScreen> {
               ),
             ),
             pw.SizedBox(height: 15),
-            // Timeline Logs Section
+            pw.Text("WORK IMAGES", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
+            pw.SizedBox(height: 6),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+              children: [
+                pw.Column(
+                  children: [
+                    pw.Text("Before Picture", style: const pw.TextStyle(fontSize: 9)),
+                    pw.SizedBox(height: 4),
+                    beforeImg != null 
+                        ? pw.Container(width: 120, height: 100, child: pw.Image(beforeImg))
+                        : pw.Container(width: 120, height: 100, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("N/A", style: const pw.TextStyle(fontSize: 8))),
+                  ],
+                ),
+                pw.Column(
+                  children: [
+                    pw.Text("Standby Picture", style: const pw.TextStyle(fontSize: 9)),
+                    pw.SizedBox(height: 4),
+                    standbyImg != null 
+                        ? pw.Container(width: 120, height: 100, child: pw.Image(standbyImg))
+                        : pw.Container(width: 120, height: 100, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("N/A", style: const pw.TextStyle(fontSize: 8))),
+                  ],
+                ),
+                pw.Column(
+                  children: [
+                    pw.Text("After Picture", style: const pw.TextStyle(fontSize: 9)),
+                    pw.SizedBox(height: 4),
+                    afterImg != null 
+                        ? pw.Container(width: 120, height: 100, child: pw.Image(afterImg))
+                        : pw.Container(width: 120, height: 100, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("N/A", style: const pw.TextStyle(fontSize: 8))),
+                  ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 15),
+            pw.Text("SIGNATURES", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
+            pw.SizedBox(height: 6),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+              children: [
+                pw.Column(
+                  children: [
+                    techSigImg != null 
+                        ? pw.Container(width: 200, height: 60, child: pw.Image(techSigImg))
+                        : pw.Container(width: 200, height: 60, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("No Signature", style: const pw.TextStyle(fontSize: 8))),
+                    pw.SizedBox(height: 4),
+                    pw.Text("Technician Signature", style: const pw.TextStyle(fontSize: 9)),
+                  ],
+                ),
+                pw.Column(
+                  children: [
+                    custSigImg != null 
+                        ? pw.Container(width: 200, height: 60, child: pw.Image(custSigImg))
+                        : pw.Container(width: 200, height: 60, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("No Signature", style: const pw.TextStyle(fontSize: 8))),
+                    pw.SizedBox(height: 4),
+                    pw.Text("Customer Signature", style: const pw.TextStyle(fontSize: 9)),
+                  ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 15),
             pw.Text("TIMELINE & STATUS HISTORY LOGS", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
             pw.SizedBox(height: 6),
-            (c.timelineLogs == null || c.timelineLogs!.isEmpty)
+            c.timelineLogs.isEmpty
                 ? pw.Text("No timeline logs recorded.", style: const pw.TextStyle(fontSize: 10, fontStyle: pw.FontStyle.italic))
                 : pw.Table.fromTextArray(
                     headers: ["Timestamp", "Status", "User / Tech", "Remarks"],
-                    data: c.timelineLogs!.map((log) {
+                    data: c.timelineLogs.map((log) {
                       String formattedTime = log['timestamp'] != null 
                           ? _formatDate(DateTime.tryParse(log['timestamp']) ?? DateTime.now()) 
                           : 'N/A';
@@ -257,7 +398,6 @@ class _AdminScreenState extends State<AdminScreen> {
                     cellPadding: const pw.EdgeInsets.all(6),
                   ),
             pw.SizedBox(height: 15),
-            // Flat History Section
             pw.Text("FLAT HISTORY (${c.buildingName} - Flat ${c.flatNumber})", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
             pw.SizedBox(height: 6),
             flatHistory.isEmpty
@@ -282,21 +422,23 @@ class _AdminScreenState extends State<AdminScreen> {
         },
       ),
     );
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: 'Master_Service_Report_${c.id}.pdf',
-    );
+    
+    final bytes = await pdf.save();
+    await Printing.sharePdf(bytes: bytes, filename: 'Master_Service_Report_${c.id}.pdf');
   }
- 
   @override
   Widget build(BuildContext context) {
     final service = Provider.of<ComplaintService>(context);
- 
     return Scaffold(
       appBar: AppBar(
         title: const Text("Master Admin Dashboard"),
         backgroundColor: Colors.red.shade900,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.dashboard),
+            tooltip: 'Dashboard',
+            onPressed: () => _showDashboardPinDialog(context),
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -332,7 +474,6 @@ class _AdminScreenState extends State<AdminScreen> {
           
           final all = snapshot.data!;
           Map<String, int> counts = _calculateLiveCounts(all);
- 
           return Column(
             children: [
               _buildFilterBar(counts),
@@ -345,7 +486,6 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
- 
   Map<String, int> _calculateLiveCounts(List<Complaint> all) {
     Map<String, int> map = {};
     
@@ -353,7 +493,6 @@ class _AdminScreenState extends State<AdminScreen> {
       bool matchViewType = true;
       if (selectedViewType == "Active") matchViewType = (c.isDeleted != true);
       if (selectedViewType == "Deleted") matchViewType = (c.isDeleted == true);
- 
       bool matchBuilding = false;
       if (selectedBuilding == "All") {
         matchBuilding = true;
@@ -362,42 +501,86 @@ class _AdminScreenState extends State<AdminScreen> {
       } else {
         matchBuilding = c.buildingName.trim() == selectedBuilding;
       }
- 
       bool matchTime = true;
       if (selectedTimeFrame == "Today") matchTime = _isSameDay(c.createdAt, DateTime.now());
       if (selectedTimeFrame == "Yesterday") matchTime = _isSameDay(c.createdAt, DateTime.now().subtract(const Duration(days: 1)));
       if (selectedTimeFrame == "Select Date" && customDate != null) matchTime = _isSameDay(c.createdAt, customDate!);
- 
       return matchViewType && matchBuilding && matchTime;
     }).toList();
- 
     for (var s in _statusOptions) {
       map[s] = baseFiltered.where((c) => c.status == s).length;
     }
     map["StatusAll"] = baseFiltered.length;
- 
     map["ActiveView"] = all.where((c) => c.isDeleted != true).length;
     map["DeletedView"] = all.where((c) => c.isDeleted == true).length;
     map["AllView"] = all.length;
- 
     return map;
   }
- 
   Widget _buildFilterBar(Map<String, int> counts) {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildFilterRow("Status", _statusOptions, counts),
-          _buildFilterRow("Building", _buildings, counts),
+          const SizedBox(height: 4),
+          _buildBuildingDropdownRow(),
+          const SizedBox(height: 4),
           _buildFilterRow("Record Type", ["All", "Active", "Deleted"], counts),
           _buildFilterRow("Time", ["All", "Today", "Yesterday", "Select Date"], counts),
         ],
       ),
     );
   }
- 
+
+  Widget _buildBuildingDropdownRow() {
+    String safeValue = _buildings.contains(selectedBuilding) ? selectedBuilding : "All";
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 75,
+            child: Text("Building:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+          ),
+          Expanded(
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade400),
+                borderRadius: BorderRadius.circular(6),
+                color: Colors.grey.shade50,
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: safeValue,
+                  isExpanded: true,
+                  isDense: true,
+                  style: const TextStyle(fontSize: 12, color: Colors.black),
+                  items: _buildings.map((b) {
+                    return DropdownMenuItem<String>(
+                      value: b,
+                      child: Text(b, overflow: TextOverflow.ellipsis),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        selectedBuilding = val;
+                      });
+                    }
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFilterRow(String label, List<String> opts, Map<String, int> counts) {
     return SizedBox(
       height: 45,
@@ -418,12 +601,9 @@ class _AdminScreenState extends State<AdminScreen> {
               int n = (opt == "All") ? (counts["AllView"] ?? 0) : (opt == "Active" ? (counts["ActiveView"] ?? 0) : (counts["DeletedView"] ?? 0));
               displayLabel = "$opt $n";
             }
- 
             bool isSelected = (label == "Status" && selectedStatus == opt) ||
-                              (label == "Building" && selectedBuilding == opt) ||
                               (label == "Record Type" && selectedViewType == opt) ||
                               (label == "Time" && selectedTimeFrame == opt);
- 
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 2),
               child: ChoiceChip(
@@ -439,7 +619,6 @@ class _AdminScreenState extends State<AdminScreen> {
                   } else {
                     setState(() {
                       if (label == "Status") selectedStatus = opt;
-                      if (label == "Building") selectedBuilding = opt;
                       if (label == "Record Type") selectedViewType = opt;
                       if (label == "Time") selectedTimeFrame = opt;
                     });
@@ -452,7 +631,6 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
- 
   Widget _buildActionRow(List<Complaint> all) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -470,15 +648,12 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
- 
   Widget _buildFilteredList(List<Complaint> all, ComplaintService service) {
     final filtered = all.where((c) {
       bool matchViewType = true;
       if (selectedViewType == "Active") matchViewType = (c.isDeleted != true);
       if (selectedViewType == "Deleted") matchViewType = (c.isDeleted == true);
- 
       bool matchStatus = selectedStatus == "All" || c.status.trim().toLowerCase() == selectedStatus.toLowerCase();
- 
       bool matchBuilding = false;
       if (selectedBuilding == "All") {
         matchBuilding = true;
@@ -487,15 +662,12 @@ class _AdminScreenState extends State<AdminScreen> {
       } else {
         matchBuilding = c.buildingName.trim() == selectedBuilding;
       }
- 
       bool matchTime = true;
       if (selectedTimeFrame == "Today") matchTime = _isSameDay(c.createdAt, DateTime.now());
       if (selectedTimeFrame == "Yesterday") matchTime = _isSameDay(c.createdAt, DateTime.now().subtract(const Duration(days: 1)));
       if (selectedTimeFrame == "Select Date" && customDate != null) matchTime = _isSameDay(c.createdAt, customDate!);
- 
       return matchViewType && matchStatus && matchBuilding && matchTime;
     }).toList();
- 
     return ListView.builder(
       itemCount: filtered.length,
       padding: const EdgeInsets.only(top: 8),
@@ -504,12 +676,10 @@ class _AdminScreenState extends State<AdminScreen> {
         bool isLocked = c.status == "Resolved" || c.status == "Closed by Customer";
         bool isStandby = c.status == "Standby";
         bool isDeleted = c.isDeleted == true;
- 
         String displayBuilding = c.buildingName;
         String displayComplaint = (c.complaintType == "Others" || !_complaintTypes.contains(c.complaintType))
             ? "${c.description} (Other)" 
             : c.complaintType;
- 
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           elevation: 2,
@@ -584,26 +754,41 @@ class _AdminScreenState extends State<AdminScreen> {
                       SizedBox(
                         height: 28,
                         child: OutlinedButton.icon(
+                          icon: const Icon(Icons.image, size: 14, color: Colors.indigo),
+                          label: const Text("See Images", style: TextStyle(fontSize: 11, color: Colors.indigo)),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: Colors.indigo.shade700),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () => _showMediaDialog(context, c),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      SizedBox(
+                        height: 28,
+                        child: OutlinedButton.icon(
                           icon: const Icon(Icons.history_edu, size: 14, color: Colors.teal),
                           label: const Text("Flat History", style: TextStyle(fontSize: 11, color: Colors.teal)),
                           style: OutlinedButton.styleFrom(
                             side: BorderSide(color: Colors.teal.shade700),
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
                           onPressed: () => _showFlatHistoryDialog(context, service, c.buildingName, c.flatNumber),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       SizedBox(
                         height: 28,
                         child: ElevatedButton.icon(
                           icon: const Icon(Icons.picture_as_pdf, size: 14, color: Colors.white),
-                          label: const Text("Master Report PDF", style: TextStyle(fontSize: 11, color: Colors.white)),
+                          label: const Text("Master Report", style: TextStyle(fontSize: 11, color: Colors.white)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red.shade800,
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
@@ -620,7 +805,6 @@ class _AdminScreenState extends State<AdminScreen> {
       },
     );
   }
- 
   void _showFlatHistoryDialog(BuildContext context, ComplaintService service, String building, String flatNumber) {
     showDialog(
       context: context,
@@ -675,7 +859,6 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
- 
   void _showTimelineHistoryDialog(BuildContext context, Complaint c) {
     showDialog(
       context: context,
@@ -684,7 +867,7 @@ class _AdminScreenState extends State<AdminScreen> {
         content: SizedBox(
           width: 450,
           height: 350,
-          child: c.timelineLogs == null || c.timelineLogs!.isEmpty
+          child: c.timelineLogs.isEmpty
               ? const Center(
                   child: Text(
                     "No historical logs recorded yet.\n(Logs will appear here for new status changes & multiple technician starts).",
@@ -693,9 +876,9 @@ class _AdminScreenState extends State<AdminScreen> {
                   ),
                 )
               : ListView.builder(
-                  itemCount: c.timelineLogs!.length,
+                  itemCount: c.timelineLogs.length,
                   itemBuilder: (context, index) {
-                    final log = c.timelineLogs![index];
+                    final log = c.timelineLogs[index];
                     return Card(
                       margin: const EdgeInsets.symmetric(vertical: 4),
                       elevation: 1,
@@ -724,7 +907,6 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
- 
   void _showAuditEditDialog(BuildContext context, ComplaintService service, Complaint c) {
     final flatCtrl = TextEditingController(text: c.flatNumber);
     final descCtrl = TextEditingController(text: c.description);
@@ -736,7 +918,6 @@ class _AdminScreenState extends State<AdminScreen> {
     
     String currentStatus = _statusOptions.contains(c.status) ? c.status : "Pending";
     String currentType = _complaintTypes.contains(c.complaintType) ? c.complaintType : "Others";
- 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -774,7 +955,7 @@ class _AdminScreenState extends State<AdminScreen> {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.history, size: 18),
-                      label: Text("View Complete Status History (${c.timelineLogs?.length ?? 0} entries)"),
+                      label: Text("View Complete Status History (${c.timelineLogs.length} entries)"),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.indigo.shade900,
                         foregroundColor: Colors.white,
@@ -783,12 +964,10 @@ class _AdminScreenState extends State<AdminScreen> {
                       onPressed: () => _showTimelineHistoryDialog(context, c),
                     ),
                   ),
- 
                   if (c.isDeleted == true) ...[
                     const SizedBox(height: 10),
                     _remarksBox("Deletion Reason", c.deleteRemarks ?? "No reason provided", Colors.red),
                   ],
- 
                   if (c.isDeleted != true) ...[
                     const Divider(height: 30),
                     _auditHeader("ADMIN OVERRIDE"),
@@ -851,27 +1030,25 @@ class _AdminScreenState extends State<AdminScreen> {
               ElevatedButton(
                 onPressed: () async {
                   String finalBuilding = (currentBuilding == "Others") ? c.buildingName : currentBuilding;
- 
-                  List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs ?? []);
- 
-                  updatedLogs.add({
-                    'status': currentStatus,
-                    'userName': 'Admin',
-                    'timestamp': DateTime.now().toIso8601String(),
-                    'remarks': currentStatus != c.status ? 'Status changed to $currentStatus by Admin' : 'Admin updated complaint details',
-                  });
- 
+                  List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
+                  if (c.status != currentStatus) {
+                    updatedLogs.add({
+                      'timestamp': DateTime.now().toIso8601String(),
+                      'status': currentStatus,
+                      'userName': 'Admin Override',
+                      'remarks': 'Status changed from ${c.status} to $currentStatus'
+                    });
+                  }
                   await service.updateComplaint(c.copyWith(
-                    status: currentStatus, 
-                    buildingName: finalBuilding, 
-                    flatNumber: flatCtrl.text,
-                    complaintType: currentType, 
-                    description: descCtrl.text,
-                    serviceReportNumber: reportNoCtrl.text,
-                    materialsUsed: materialsCtrl.text,
+                    buildingName: finalBuilding,
+                    flatNumber: flatCtrl.text.trim(),
+                    complaintType: currentType,
+                    description: descCtrl.text.trim(),
+                    status: currentStatus,
+                    serviceReportNumber: reportNoCtrl.text.trim(),
+                    materialsUsed: materialsCtrl.text.trim(),
                     timelineLogs: updatedLogs,
                   ));
- 
                   Navigator.pop(context);
                 },
                 child: const Text("SAVE CHANGES"),
@@ -881,39 +1058,24 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
- 
-  void _showDeleteConfirm(BuildContext context, ComplaintService service, Complaint c) {
-    // Stub implementation or matching context implementation
-  }
- 
   Widget _auditHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 4),
-      child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.red.shade900)),
     );
   }
- 
-  Widget _auditRow(String label, String value, String subValue) {
+  Widget _auditRow(String label, String val1, String val2) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      padding: const EdgeInsets.only(bottom: 4, left: 12),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12)),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(value, style: const TextStyle(fontSize: 12)),
-              if (subValue.isNotEmpty && subValue != "N/A")
-                Text(subValue, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-            ],
-          ),
+          SizedBox(width: 90, child: Text("$label:", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
+          Expanded(child: Text("$val1 ($val2)", style: const TextStyle(fontSize: 11))),
         ],
       ),
     );
   }
- 
-  Widget _remarksBox(String title, String message, MaterialColor color) {
+  Widget _remarksBox(String title, String content, MaterialColor color) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(10),
@@ -925,9 +1087,49 @@ class _AdminScreenState extends State<AdminScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title.toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color.shade900)),
+          Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: color.shade900)),
           const SizedBox(height: 4),
-          Text(message, style: const TextStyle(fontSize: 12)),
+          Text(content, style: const TextStyle(fontSize: 11)),
+        ],
+      ),
+    );
+  }
+  void _showDeleteConfirm(BuildContext context, ComplaintService service, Complaint c) {
+    final deleteReasonCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Confirm Deletion"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Please provide a reason for deleting this complaint record:"),
+            const SizedBox(height: 10),
+            TextField(
+              controller: deleteReasonCtrl,
+              decoration: const InputDecoration(labelText: "Deletion Reason", border: OutlineInputBorder()),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              if (deleteReasonCtrl.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter a deletion reason")));
+                return;
+              }
+              await service.updateComplaint(c.copyWith(
+                isDeleted: true,
+                deleteRemarks: deleteReasonCtrl.text.trim(),
+              ));
+              Navigator.pop(context); // Close delete confirm
+              Navigator.pop(context); // Close audit dialog
+            },
+            child: const Text("DELETE RECORD"),
+          ),
         ],
       ),
     );

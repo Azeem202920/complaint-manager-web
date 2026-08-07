@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dashboard_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import '../services/complaint_service.dart';
 import 'register_complaint_screen.dart';
 import 'technician_screen.dart';
 import 'admin_screen.dart';
-
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
-
   final String _adminPin = "6693";
   
   // UPDATED: Added your specific Customer Credentials
@@ -30,7 +26,6 @@ class HomeScreen extends StatelessWidget {
     "Rana Sb": "9999",
     "Moeen Sb": "8899",
   };
-
   final Map<String, String> _technicianCredentials = const {
     "Charanjeet": "1234", "Noman": "3290", "Raju": "3556",
     "Usman": "4347", "Aftab": "2545", "Yam Bahadur": "9999",
@@ -38,13 +33,11 @@ class HomeScreen extends StatelessWidget {
     "Sunil": "3790", "User": "11234", "Azeem": "6693",
     "Sir": "3067", "Tanveer": "4066", "Rana Sb": "9999", "Moeen Sb": "8899"
   };
-
   static Future<void> logout(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear(); 
     
     if (!context.mounted) return;
-
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (context) => const HomeScreen()),
       (route) => false,
@@ -54,40 +47,13 @@ class HomeScreen extends StatelessWidget {
       const SnackBar(content: Text("Logged out successfully")),
     );
   }
-
-  void _showDashboardPinDialog(BuildContext context) {
-    final controller = TextEditingController();
-    void submit() {
-      if (controller.text == "6693") {
-        Navigator.pop(context);
-        Navigator.push(context, MaterialPageRoute(builder: (context) => const DashboardScreen()));
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid PIN")));
-      }
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Dashboard Access"),
-        content: TextField(controller: controller, obscureText: true, keyboardType: TextInputType.number),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          ElevatedButton(onPressed: submit, child: const Text("Enter")),
-        ],
-      ),
-    );
-  }
-
   // UPDATED: Customer Login Dialog using Username and Password
   void _showCustomerLoginDialog(BuildContext context) {
     final uController = TextEditingController();
     final pController = TextEditingController();
-
     void submit() async {
       String username = uController.text.trim();
       String password = pController.text.trim();
-
       if (_customerCredentials.containsKey(username) && _customerCredentials[username] == password) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('user_name', username);
@@ -109,7 +75,6 @@ class HomeScreen extends StatelessWidget {
         );
       }
     }
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -140,7 +105,6 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
-
   Future<void> _handleTechnicianAccess(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final lastLogin = prefs.getString('tech_last_login');
@@ -157,7 +121,6 @@ class HomeScreen extends StatelessWidget {
     if (!context.mounted) return;
     _showTechLoginDialog(context);
   }
-
   Future<void> _handleAdminAccess(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final lastLogin = prefs.getString('admin_last_login');
@@ -174,11 +137,9 @@ class HomeScreen extends StatelessWidget {
     if (!context.mounted) return;
     _showAdminPinDialog(context);
   }
-
   void _showTechLoginDialog(BuildContext context) {
     final uContent = TextEditingController();
     final pContent = TextEditingController();
-
     void attemptLogin() async {
       String enteredName = uContent.text.trim(); 
       if (_technicianCredentials.containsKey(enteredName) && 
@@ -198,7 +159,6 @@ class HomeScreen extends StatelessWidget {
         );
       }
     }
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -228,7 +188,6 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
-
   void _showAdminPinDialog(BuildContext context) {
     final controller = TextEditingController();
     void submit() async {
@@ -247,7 +206,6 @@ class HomeScreen extends StatelessWidget {
         );
       }
     }
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -266,11 +224,9 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     final complaintService = Provider.of<ComplaintService>(context, listen: false);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text("Maintenance App"), 
@@ -302,7 +258,6 @@ class HomeScreen extends StatelessWidget {
                 _buildSmallBtn(context, "Register", Colors.blue, () => _showCustomerLoginDialog(context)),
                 _buildSmallBtn(context, "Technician", Colors.orange, () => _handleTechnicianAccess(context)),
                 _buildSmallBtn(context, "Settings", Colors.redAccent, () => _handleAdminAccess(context)),
-                _buildSmallBtn(context, "Dashboard", Colors.green, () => _showDashboardPinDialog(context)),
               ],
             ),
           ],
@@ -310,7 +265,6 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
-
   Widget _buildSmallBtn(BuildContext context, String label, Color color, VoidCallback onTap) {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(

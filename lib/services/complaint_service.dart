@@ -1,16 +1,17 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../models/complaint.dart';
 
 class ComplaintService extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
   final String collectionPath = 'complaint-manager';
   
-  // New Config Path
   final String _configCollection = 'config';
   final String _configDoc = 'app_settings';
-
-  // --- STREAM METHODS ---
 
   Stream<List<Complaint>> getAllComplaints() {
     return _db
@@ -22,13 +23,12 @@ class ComplaintService extends ChangeNotifier {
             .toList());
   }
 
-// Inside ComplaintService class
-Stream<DocumentSnapshot> getChillerStatusStream() {
-  return FirebaseFirestore.instance
-      .collection('system_data')
-      .doc('chiller_status')
-      .snapshots();
-}
+  Stream<DocumentSnapshot> getChillerStatusStream() {
+    return FirebaseFirestore.instance
+        .collection('system_data')
+        .doc('chiller_status')
+        .snapshots();
+  }
 
   Stream<List<Complaint>> getComplaintsByPhone(String phone) {
     return _db
@@ -48,8 +48,70 @@ Stream<DocumentSnapshot> getChillerStatusStream() {
             snapshot.docs.map((doc) => Complaint.fromFirestore(doc)).toList());
   }
 
-  // --- CONFIG METHODS (NEW) ---
+  // --- DIAGNOSTIC & STATUS METHODS ---
 
+  Future<void> testFirestoreConnection() async {
+    try {
+      await _db.collection(collectionPath).limit(1).get();
+      debugPrint("Firestore connection test successful.");
+    } catch (e) {
+      debugPrint("Firestore connection test failed: $e");
+    }
+  }
+
+  Future<void> checkDatabaseExists() async {
+    try {
+      var snapshot = await _db.collection(collectionPath).limit(1).get();
+      if (snapshot.docs.isNotEmpty) {
+        debugPrint("Database reachable. Documents found.");
+      } else {
+        debugPrint("Database reachable, but collection is empty.");
+      }
+    } catch (e) {
+      debugPrint("Error checking database: $e");
+    }
+  }
+
+  Future<void> updateLifecycleStatus(String complaintId, String newStatus) async {
+    try {
+      await _db.collection(collectionPath).doc(complaintId).update({
+        'status': newStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Error updating lifecycle status: $e");
+    }
+  }
+
+  // --- STORAGE UPLOAD METHODS ---
+  Future<String?> uploadComplaintImage(File imageFile, String complaintId, String imageType) async {
+    try {
+      final ref = _storage.ref().child('complaints/$complaintId/${imageType}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await ref.putFile(imageFile);
+      return await ref.getDownloadURL();
+    } catch (e) {
+      debugPrint("Error uploading image: $e");
+      return null;
+    }
+  }
+  Future<String?> uploadComplaintImageBytes(Uint8List bytes, String complaintId, String type) async {
+  final ref = FirebaseStorage.instance.ref().child('complaints/$complaintId/${type}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+  final uploadTask = await ref.putData(bytes);
+  return await uploadTask.ref.getDownloadURL();
+  }
+  Future<String?> uploadSignatureBytes(Uint8List signatureBytes, String complaintId, String sigType) async {
+    try {
+      final ref = _storage.ref().child('complaints/$complaintId/${sigType}_${DateTime.now().millisecondsSinceEpoch}.png');
+      await ref.putData(signatureBytes, SettableMetadata(contentType: 'image/png'));
+      return await ref.getDownloadURL();
+    } catch (e) {
+      debugPrint("Error uploading signature: $e");
+      return null;
+    }
+  }
+
+  // --- CONFIG METHODS ---
   Future<void> updateConfigList(String fieldName, List<String> newList) async {
     await _db.collection(_configCollection).doc(_configDoc).set({
       fieldName: newList,
@@ -62,7 +124,6 @@ Stream<DocumentSnapshot> getChillerStatusStream() {
   }
 
   // --- WRITE METHODS ---
-
   Future<void> addComplaintWithId(Complaint complaint) async {
     await _db
         .collection(collectionPath)
@@ -79,87 +140,6 @@ Stream<DocumentSnapshot> getChillerStatusStream() {
     notifyListeners();
   }
 
-  Future<void> updateComplaintWithLog(Complaint complaint, String newStatus, String userName, String remarks) async {
-    List<Map<String, dynamic>> logs = List.from(complaint.timelineLogs ?? []);
-    
-    // Append the new status change entry
-    logs.add({
-      'status': newStatus,
-      'userName': userName,
-      'timestamp': DateTime.now().toIso8601String(),
-      'remarks': remarks,
-    });
-
-    Complaint updated = complaint.copyWith(
-      status: newStatus,
-      timelineLogs: logs,
-    );
-
-    await updateComplaint(updated);
-  }
-
-  Future<void> updateLifecycleStatus({
-    required String id,
-    required String status,
-    required String userName, 
-    String? reason,          
-    String? serialNo,
-    String? materials,
-    bool isStarting = false,
-    bool isStandby = false,
-    bool isClosing = false,
-  }) async {
-    // Fetch current complaint first to safely preserve and update timeline logs
-    DocumentSnapshot docSnap = await _db.collection(collectionPath).doc(id).get();
-    if (!docSnap.exists) return;
-    
-    Complaint complaint = Complaint.fromFirestore(docSnap);
-    List<Map<String, dynamic>> logs = List.from(complaint.timelineLogs ?? []);
-
-    // Push action log entry to timelineLogs array
-    String logRemarks = reason ?? (isClosing ? (serialNo ?? '') : '');
-    logs.add({
-      'status': status,
-      'userName': userName,
-      'timestamp': DateTime.now().toIso8601String(),
-      'remarks': logRemarks,
-    });
-
-    Map<String, dynamic> updates = {
-      'status': status,
-      'lastUpdatedBy': userName, 
-      'lastUpdatedAt': FieldValue.serverTimestamp(),
-      'timelineLogs': logs,
-    };
-
-    if (isStarting) {
-      updates['startTime'] = FieldValue.serverTimestamp();
-      updates['technicianName'] = userName; 
-      updates['startedBy'] = userName;
-    }
-    
-    if (isStandby) {
-      updates['standbyTime'] = FieldValue.serverTimestamp();
-      updates['standbyReason'] = reason;   
-      updates['standbyBy'] = userName;
-    }
-    
-    if (isClosing) {
-      updates['completedAt'] = FieldValue.serverTimestamp();
-      updates['closedBy'] = userName; 
-      updates['finalRemarks'] = reason; 
-      updates['serviceReportNumber'] = serialNo;
-      updates['materialsUsed'] = materials ?? ''; 
-      
-      if (status == "Resolved") {
-        updates['technicianName'] = userName;
-      }
-    }
-
-    await _db.collection(collectionPath).doc(id).update(updates);
-    notifyListeners();
-  }
-
   Future<void> deleteComplaint(String id, String reason) async {
     await _db.collection(collectionPath).doc(id).update({
       'isDeleted': true,
@@ -167,31 +147,5 @@ Stream<DocumentSnapshot> getChillerStatusStream() {
       'deletedAt': FieldValue.serverTimestamp(),
     });
     notifyListeners();
-  }
-
-  // --- DEBUG METHODS ---
-
-  Future<void> testFirestoreConnection() async {
-    try {
-      await _db.collection('connection_test').doc('ping').set({
-        'last_ping': Timestamp.now(),
-      });
-      debugPrint("Firestore Connection: Success");
-    } catch (e) {
-      debugPrint("Firestore Connection: Failed -> $e");
-    }
-  }
-
-  Future<void> checkDatabaseExists() async {
-    try {
-      final snapshot = await _db.collection(collectionPath).limit(1).get();
-      if (snapshot.docs.isNotEmpty) {
-        debugPrint("DB Check: Data found in '$collectionPath'");
-      } else {
-        debugPrint("DB Check: Collection '$collectionPath' is empty.");
-      }
-    } catch (e) {
-      debugPrint("DB Check: Error accessing collection -> $e");
-    }
   }
 }

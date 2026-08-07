@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 class Complaint {
   final String id;
   final String customerPhone;
@@ -21,6 +20,13 @@ class Complaint {
   final List<Map<String, dynamic>> timelineLogs;
   final bool isDeleted;
   
+  // Media & Signature URLs
+  final String? beforeImageUrl;
+  final String? standbyImageUrl;
+  final String? afterImageUrl;
+  final String? technicianSignatureUrl;
+  final String? customerSignatureUrl;
+  
   // Lifecycle & Audit Fields
   final DateTime? startTime;
   final DateTime? standbyTime;
@@ -29,7 +35,6 @@ class Complaint {
   final String? closedBy;
   final String? deleteRemarks;
   final String finalRemarks;
-
   Complaint({
     required this.id,
     required this.customerPhone,
@@ -50,6 +55,11 @@ class Complaint {
     this.imageUrls = const [],
     this.timelineLogs = const [],
     this.isDeleted = false,
+    this.beforeImageUrl,
+    this.standbyImageUrl,
+    this.afterImageUrl,
+    this.technicianSignatureUrl,
+    this.customerSignatureUrl,
     this.startTime,
     this.standbyTime,
     this.completedAt,
@@ -58,7 +68,6 @@ class Complaint {
     this.deleteRemarks,
     this.finalRemarks = '',
   });
-
   Complaint copyWith({
     String? id,
     String? buildingName,
@@ -80,6 +89,11 @@ class Complaint {
     String? finalRemarks,
     List<String>? imageUrls,
     List<Map<String, dynamic>>? timelineLogs,
+    String? beforeImageUrl,
+    String? standbyImageUrl,
+    String? afterImageUrl,
+    String? technicianSignatureUrl,
+    String? customerSignatureUrl,
   }) {
     return Complaint(
       id: id ?? this.id,
@@ -108,27 +122,27 @@ class Complaint {
       isDeleted: isDeleted ?? this.isDeleted,
       deleteRemarks: deleteRemarks ?? this.deleteRemarks,
       finalRemarks: finalRemarks ?? this.finalRemarks,
+      beforeImageUrl: beforeImageUrl ?? this.beforeImageUrl,
+      standbyImageUrl: standbyImageUrl ?? this.standbyImageUrl,
+      afterImageUrl: afterImageUrl ?? this.afterImageUrl,
+      technicianSignatureUrl: technicianSignatureUrl ?? this.technicianSignatureUrl,
+      customerSignatureUrl: customerSignatureUrl ?? this.customerSignatureUrl,
     );
   }
-
   factory Complaint.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-
     DateTime? parseFlexibleDate(dynamic value) {
       if (value == null) return null;
       if (value is Timestamp) return value.toDate();
       if (value is String) return DateTime.tryParse(value);
       return null;
     }
-
-    // Safely parse list of maps from Firestore
     List<Map<String, dynamic>> parsedTimelineLogs = [];
     if (data['timelineLogs'] != null) {
       parsedTimelineLogs = List<Map<String, dynamic>>.from(
         (data['timelineLogs'] as List).map((item) => Map<String, dynamic>.from(item)),
       );
     }
-
     return Complaint(
       id: doc.id,
       customerPhone: data['customerPhone'] ?? '',
@@ -149,6 +163,11 @@ class Complaint {
       imageUrls: List<String>.from(data['imageUrls'] ?? []),
       timelineLogs: parsedTimelineLogs,
       isDeleted: data['isDeleted'] ?? false,
+      beforeImageUrl: data['beforeImageUrl'],
+      standbyImageUrl: data['standbyImageUrl'],
+      afterImageUrl: data['afterImageUrl'],
+      technicianSignatureUrl: data['technicianSignatureUrl'],
+      customerSignatureUrl: data['customerSignatureUrl'],
       startTime: parseFlexibleDate(data['startTime']),
       standbyTime: parseFlexibleDate(data['standbyTime']),
       completedAt: parseFlexibleDate(data['completedAt']),
@@ -158,7 +177,6 @@ class Complaint {
       finalRemarks: data['finalRemarks'] ?? '',
     );
   }
-
   Map<String, dynamic> toMap() {
     return {
       'customerPhone': customerPhone,
@@ -179,6 +197,11 @@ class Complaint {
       'imageUrls': imageUrls,
       'timelineLogs': timelineLogs,
       'isDeleted': isDeleted,
+      'beforeImageUrl': beforeImageUrl,
+      'standbyImageUrl': standbyImageUrl,
+      'afterImageUrl': afterImageUrl,
+      'technicianSignatureUrl': technicianSignatureUrl,
+      'customerSignatureUrl': customerSignatureUrl,
       'startTime': startTime != null ? Timestamp.fromDate(startTime!) : null,
       'standbyTime': standbyTime != null ? Timestamp.fromDate(standbyTime!) : null,
       'completedAt': completedAt != null ? Timestamp.fromDate(completedAt!) : null,
@@ -188,7 +211,5 @@ class Complaint {
       'finalRemarks': finalRemarks,
     };
   }
-
-  // Alias method for convenience if toJson() is used elsewhere in services
   Map<String, dynamic> toJson() => toMap();
 }

@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/complaint.dart';
@@ -7,9 +9,8 @@ import 'home_screen.dart';
 class RegisterComplaintScreen extends StatefulWidget {
   final String phoneNumber;
   final String customerName; // Received from Login
-
   const RegisterComplaintScreen({super.key, required this.phoneNumber, required this.customerName});
-
+  
   @override
   State<RegisterComplaintScreen> createState() => _RegisterComplaintScreenState();
 }
@@ -17,7 +18,6 @@ class RegisterComplaintScreen extends StatefulWidget {
 class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final _formKey = GlobalKey<FormState>();
-
   String _flat = '';
   String? _selectedBuilding;
   String? _selectedType;
@@ -29,22 +29,29 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
   bool _isOtherBuilding = false;
   bool _isOtherType = false;
   bool _loading = false;
-
+  
   final List<String> _complaintTypes = ["Not Mentioned", "Water leakage", "Low cooling", "Smell coming from AC", "Sound coming from AC", "Cleaning/Service", "New rent out", "Low air speed", "Low fan speed", "AC fan not working", "No Cooling", "No Power/Electricity", "Others"];
   final List<String> _buildings = ["Expo Tower", "Gate Tower 1", "Gate Tower 2", "Al Khor Tower C", "Rital & Rinad",  "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5", "Naseem", "Hala Building", "Nada building", "Al Tameer",  "Tallah Mall", "Al Khor Mall", "Mazaya", "Yasmeen Tower", "Ajman Club", "Salah Ud Din", "Sara Plaza 3", "Jurf 2", "Flower Shop", "Amina Hospital", "Villas", "Sharjah", "Rashdiya", "Galleria Mall", "N/A", "Others"];
-
+  
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _manualBuildingController.dispose();
+    _manualTypeController.dispose();
+    super.dispose();
+  }
+
   // Dialog with Remarks TextField as requested
   void _showCustomerCloseDialog(Complaint c) {
     if (c.status == "Resolved" || c.status == "Closed by Customer") return;
-
-    final TextEditingController _remarksController = TextEditingController();
-
+    final TextEditingController remarksController = TextEditingController();
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -55,7 +62,7 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
             const Text("If your issue is solved, please provide closing remarks:"),
             const SizedBox(height: 15),
             TextField(
-              controller: _remarksController,
+              controller: remarksController,
               maxLines: 3,
               decoration: const InputDecoration(
                 hintText: "Enter your closing remarks here...",
@@ -72,20 +79,19 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             onPressed: () async {
-              if (_remarksController.text.trim().isEmpty) {
+              if (remarksController.text.trim().isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Please enter remarks before closing")),
                 );
                 return;
               }
-
+              
               final service = Provider.of<ComplaintService>(context, listen: false);
+              
+              // Fixed method call passing required arguments securely
               await service.updateLifecycleStatus(
-                id: c.id,
-                status: "Closed by Customer",
-                userName: widget.customerName, 
-                reason: _remarksController.text.trim(), 
-                isClosing: true,
+                c.id,
+                "Closed by Customer",
               );
               
               if (mounted) Navigator.pop(context);
@@ -103,10 +109,10 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
-
+    
     String finalBuilding = _isOtherBuilding ? _manualBuildingController.text : (_selectedBuilding ?? '');
     String finalType = _isOtherType ? _manualTypeController.text : (_selectedType ?? '');
-
+    
     setState(() => _loading = true);
     try {
       final service = Provider.of<ComplaintService>(context, listen: false);
@@ -134,7 +140,12 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
       _formKey.currentState!.reset();
       _manualBuildingController.clear();
       _manualTypeController.clear();
-      setState(() { _selectedBuilding = null; _selectedType = null; _isOtherBuilding = false; _isOtherType = false; });
+      setState(() { 
+        _selectedBuilding = null; 
+        _selectedType = null; 
+        _isOtherBuilding = false; 
+        _isOtherType = false; 
+      });
       _tabController.animateTo(1);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Complaint Registered!")));
     } catch (e) {
