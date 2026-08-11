@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:csv/csv.dart';
 // PDF & Printing packages imports
+import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -198,7 +199,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
-  Future<void> _generateMasterServiceReportPdf(BuildContext context, ComplaintService service, Complaint c) async {
+ Future<void> _generateMasterServiceReportPdf(BuildContext context, ComplaintService service, Complaint c) async {
     List<Complaint> flatHistory = [];
     try {
       final allHistory = await service.getAdminFullHistory().first;
@@ -211,18 +212,13 @@ class _AdminScreenState extends State<AdminScreen> {
     }
     
     pw.ImageProvider? beforeImg;
-    pw.ImageProvider? standbyImg;
     pw.ImageProvider? afterImg;
     pw.ImageProvider? techSigImg;
     pw.ImageProvider? custSigImg;
+    
     try {
       if (c.beforeImageUrl != null && c.beforeImageUrl!.isNotEmpty) {
         beforeImg = await networkImage(c.beforeImageUrl!);
-      }
-    } catch (_) {}
-    try {
-      if (c.standbyImageUrl != null && c.standbyImageUrl!.isNotEmpty) {
-        standbyImg = await networkImage(c.standbyImageUrl!);
       }
     } catch (_) {}
     try {
@@ -241,12 +237,14 @@ class _AdminScreenState extends State<AdminScreen> {
       }
     } catch (_) {}
     final pdf = pw.Document();
+    // --- PAGE 1: Complaint Info, Timeline, Closing Remarks & Materials Used, Signatures ---
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
         build: (pw.Context context) {
           return [
+            // Header
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
@@ -269,6 +267,7 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
             pw.Divider(thickness: 1.5, color: PdfColors.red900),
             pw.SizedBox(height: 10),
+            // 1. COMPLAINT INFORMATION (Without closing remarks & materials used)
             pw.Text("COMPLAINT INFORMATION", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
             pw.SizedBox(height: 6),
             pw.Container(
@@ -302,79 +301,11 @@ class _AdminScreenState extends State<AdminScreen> {
                   ),
                   pw.SizedBox(height: 6),
                   pw.Text("Description / Remarks: ${c.description.isNotEmpty ? c.description : 'N/A'}", style: const pw.TextStyle(fontSize: 10)),
-                  if (c.materialsUsed.isNotEmpty) ...[
-                    pw.SizedBox(height: 6),
-                    pw.Text("Materials Used: ${c.materialsUsed}", style: const pw.TextStyle(fontSize: 10)),
-                  ],
-                  if (c.finalRemarks.isNotEmpty) ...[
-                    pw.SizedBox(height: 6),
-                    pw.Text("Closing Remarks: ${c.finalRemarks}", style: const pw.TextStyle(fontSize: 10)),
-                  ],
                 ],
               ),
             ),
             pw.SizedBox(height: 15),
-            pw.Text("WORK IMAGES", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
-            pw.SizedBox(height: 6),
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
-              children: [
-                pw.Column(
-                  children: [
-                    pw.Text("Before Picture", style: const pw.TextStyle(fontSize: 9)),
-                    pw.SizedBox(height: 4),
-                    beforeImg != null 
-                        ? pw.Container(width: 120, height: 100, child: pw.Image(beforeImg))
-                        : pw.Container(width: 120, height: 100, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("N/A", style: const pw.TextStyle(fontSize: 8))),
-                  ],
-                ),
-                pw.Column(
-                  children: [
-                    pw.Text("Standby Picture", style: const pw.TextStyle(fontSize: 9)),
-                    pw.SizedBox(height: 4),
-                    standbyImg != null 
-                        ? pw.Container(width: 120, height: 100, child: pw.Image(standbyImg))
-                        : pw.Container(width: 120, height: 100, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("N/A", style: const pw.TextStyle(fontSize: 8))),
-                  ],
-                ),
-                pw.Column(
-                  children: [
-                    pw.Text("After Picture", style: const pw.TextStyle(fontSize: 9)),
-                    pw.SizedBox(height: 4),
-                    afterImg != null 
-                        ? pw.Container(width: 120, height: 100, child: pw.Image(afterImg))
-                        : pw.Container(width: 120, height: 100, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("N/A", style: const pw.TextStyle(fontSize: 8))),
-                  ],
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 15),
-            pw.Text("SIGNATURES", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
-            pw.SizedBox(height: 6),
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
-              children: [
-                pw.Column(
-                  children: [
-                    techSigImg != null 
-                        ? pw.Container(width: 200, height: 60, child: pw.Image(techSigImg))
-                        : pw.Container(width: 200, height: 60, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("No Signature", style: const pw.TextStyle(fontSize: 8))),
-                    pw.SizedBox(height: 4),
-                    pw.Text("Technician Signature", style: const pw.TextStyle(fontSize: 9)),
-                  ],
-                ),
-                pw.Column(
-                  children: [
-                    custSigImg != null 
-                        ? pw.Container(width: 200, height: 60, child: pw.Image(custSigImg))
-                        : pw.Container(width: 200, height: 60, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("No Signature", style: const pw.TextStyle(fontSize: 8))),
-                    pw.SizedBox(height: 4),
-                    pw.Text("Customer Signature", style: const pw.TextStyle(fontSize: 9)),
-                  ],
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 15),
+            // 2. TIMELINE & STATUS HISTORY LOGS
             pw.Text("TIMELINE & STATUS HISTORY LOGS", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
             pw.SizedBox(height: 6),
             c.timelineLogs.isEmpty
@@ -398,32 +329,106 @@ class _AdminScreenState extends State<AdminScreen> {
                     cellPadding: const pw.EdgeInsets.all(6),
                   ),
             pw.SizedBox(height: 15),
-            pw.Text("FLAT HISTORY (${c.buildingName} - Flat ${c.flatNumber})", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
+            // 3. CLOSING REMARKS & MATERIALS USED (Placed right after timeline without separate enclosing box)
+            pw.Text("CLOSING REMARKS & MATERIALS USED", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
             pw.SizedBox(height: 6),
-            flatHistory.isEmpty
-                ? pw.Text("No other records found for this flat.", style: const pw.TextStyle(fontSize: 10, fontStyle: pw.FontStyle.italic))
-                : pw.Table.fromTextArray(
-                    headers: ["Date", "Complaint Type", "Status", "Technician", "Remarks"],
-                    data: flatHistory.map((item) {
-                      return [
-                        _formatDate(item.createdAt),
-                        item.complaintType,
-                        item.status,
-                        item.technicianName ?? 'N/A',
-                        item.finalRemarks.isNotEmpty ? item.finalRemarks : (item.description.isNotEmpty ? item.description : 'N/A'),
-                      ];
-                    }).toList(),
-                    headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
-                    headerDecoration: const pw.BoxDecoration(color: PdfColors.teal900),
-                    cellStyle: const pw.TextStyle(fontSize: 9),
-                    cellPadding: const pw.EdgeInsets.all(6),
-                  ),
+            pw.Text("Closing Remarks: ${c.finalRemarks.isNotEmpty ? c.finalRemarks : 'N/A'}", style: const pw.TextStyle(fontSize: 10)),
+            pw.SizedBox(height: 4),
+            pw.Text("Materials Used: ${c.materialsUsed.isNotEmpty ? c.materialsUsed : 'N/A'}", style: const pw.TextStyle(fontSize: 10)),
+            pw.SizedBox(height: 15),
+            // 4. CUSTOMER & TECHNICIAN SIGNATURES
+            pw.Text("SIGNATURES", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
+            pw.SizedBox(height: 6),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+              children: [
+                pw.Column(
+                  children: [
+                    techSigImg != null 
+                        ? pw.Container(width: 200, height: 60, child: pw.Image(techSigImg, fit: pw.BoxFit.contain))
+                        : pw.Container(width: 200, height: 60, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("No Signature", style: const pw.TextStyle(fontSize: 8))),
+                    pw.SizedBox(height: 4),
+                    pw.Text("Technician Signature", style: const pw.TextStyle(fontSize: 9)),
+                  ],
+                ),
+                pw.Column(
+                  children: [
+                    custSigImg != null 
+                        ? pw.Container(width: 200, height: 60, child: pw.Image(custSigImg, fit: pw.BoxFit.contain))
+                        : pw.Container(width: 200, height: 60, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("No Signature", style: const pw.TextStyle(fontSize: 8))),
+                    pw.SizedBox(height: 4),
+                    pw.Text("Customer Signature", style: const pw.TextStyle(fontSize: 9)),
+                  ],
+                ),
+              ],
+            ),
           ];
         },
       ),
     );
+    // --- PAGE 2: Before/After Pictures (Increased Height) & Flat History ---
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text("WORK IMAGES (BEFORE & AFTER)", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
+              pw.SizedBox(height: 8),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+                children: [
+                  pw.Column(
+                    children: [
+                      pw.Text("Before Picture", style: const pw.TextStyle(fontSize: 9)),
+                      pw.SizedBox(height: 4),
+                      beforeImg != null 
+                          ? pw.Container(width: 230, height: 210, child: pw.Image(beforeImg, fit: pw.BoxFit.scaleDown))
+                          : pw.Container(width: 230, height: 210, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("N/A", style: const pw.TextStyle(fontSize: 8))),
+                    ],
+                  ),
+                  pw.Column(
+                    children: [
+                      pw.Text("After Picture", style: const pw.TextStyle(fontSize: 9)),
+                      pw.SizedBox(height: 4),
+                      afterImg != null 
+                          ? pw.Container(width: 230, height: 210, child: pw.Image(afterImg, fit: pw.BoxFit.scaleDown))
+                          : pw.Container(width: 230, height: 210, alignment: pw.Alignment.center, decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400)), child: pw.Text("N/A", style: const pw.TextStyle(fontSize: 8))),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+              // FLAT HISTORY
+              pw.Text("FLAT HISTORY (${c.buildingName} - Flat ${c.flatNumber})", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
+              pw.SizedBox(height: 6),
+              flatHistory.isEmpty
+                  ? pw.Text("No other records found for this flat.", style: const pw.TextStyle(fontSize: 10, fontStyle: pw.FontStyle.italic))
+                  : pw.Table.fromTextArray(
+                      headers: ["Date", "Complaint Type", "Status", "Technician", "Remarks"],
+                      data: flatHistory.map((item) {
+                        return [
+                          _formatDate(item.createdAt),
+                          item.complaintType,
+                          item.status,
+                          item.technicianName ?? 'N/A',
+                          item.finalRemarks.isNotEmpty ? item.finalRemarks : (item.description.isNotEmpty ? item.description : 'N/A'),
+                        ];
+                      }).toList(),
+                      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.white),
+                      headerDecoration: const pw.BoxDecoration(color: PdfColors.teal900),
+                      cellStyle: const pw.TextStyle(fontSize: 9),
+                      cellPadding: const pw.EdgeInsets.all(6),
+                    ),
+            ],
+          );
+        },
+      ),
+    );
     
-    final bytes = await pdf.save();
+    final Uint8List bytes = await pdf.save();
     await Printing.sharePdf(bytes: bytes, filename: 'Master_Service_Report_${c.id}.pdf');
   }
   @override
@@ -516,24 +521,7 @@ class _AdminScreenState extends State<AdminScreen> {
     map["AllView"] = all.length;
     return map;
   }
-  Widget _buildFilterBar(Map<String, int> counts) {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildFilterRow("Status", _statusOptions, counts),
-          const SizedBox(height: 4),
-          _buildBuildingDropdownRow(),
-          const SizedBox(height: 4),
-          _buildFilterRow("Record Type", ["All", "Active", "Deleted"], counts),
-          _buildFilterRow("Time", ["All", "Today", "Yesterday", "Select Date"], counts),
-        ],
-      ),
-    );
-  }
-
+  
   Widget _buildBuildingDropdownRow() {
     String safeValue = _buildings.contains(selectedBuilding) ? selectedBuilding : "All";
     return Padding(
@@ -580,54 +568,101 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
+  Widget _buildFilterRow(String label, List<String> options, Map<String, int> counts) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 75,
+            child: Text("$label:", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: options.map((opt) {
+                  bool isSelected = false;
+                  if (label == "Status") isSelected = selectedStatus == opt;
+                  if (label == "Record Type") isSelected = selectedViewType == opt;
+                  if (label == "Time") isSelected = selectedTimeFrame == opt;
 
-  Widget _buildFilterRow(String label, List<String> opts, Map<String, int> counts) {
-    return SizedBox(
-      height: 45,
-      child: ScrollConfiguration(
-        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: true),
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          itemCount: opts.length,
-          itemBuilder: (context, i) {
-            String opt = opts[i];
-            String displayLabel = opt;
-            
-            if (label == "Status") {
-              int n = (opt == "All") ? (counts["StatusAll"] ?? 0) : (counts[opt] ?? 0);
-              displayLabel = "$opt $n";
-            } else if (label == "Record Type") {
-              int n = (opt == "All") ? (counts["AllView"] ?? 0) : (opt == "Active" ? (counts["ActiveView"] ?? 0) : (counts["DeletedView"] ?? 0));
-              displayLabel = "$opt $n";
-            }
-            bool isSelected = (label == "Status" && selectedStatus == opt) ||
-                              (label == "Record Type" && selectedViewType == opt) ||
-                              (label == "Time" && selectedTimeFrame == opt);
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: ChoiceChip(
-                label: Text(opt == "Select Date" && customDate != null ? DateFormat('dd/MM').format(customDate!) : displayLabel, style: const TextStyle(fontSize: 11)),
-                selected: isSelected,
-                selectedColor: Colors.red.shade900,
-                labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black, fontSize: 11),
-                onSelected: (val) async {
-                  if (!val) return;
-                  if (opt == "Select Date") {
-                    DateTime? d = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2025), lastDate: DateTime.now());
-                    if (d != null) setState(() { selectedTimeFrame = "Select Date"; customDate = d; });
-                  } else {
-                    setState(() {
-                      if (label == "Status") selectedStatus = opt;
-                      if (label == "Record Type") selectedViewType = opt;
-                      if (label == "Time") selectedTimeFrame = opt;
-                    });
+                  int count = 0;
+                  if (label == "Status") {
+                    count = opt == "All" ? (counts["StatusAll"] ?? 0) : (counts[opt] ?? 0);
+                  } else if (label == "Record Type") {
+                    if (opt == "All") count = counts["AllView"] ?? 0;
+                    if (opt == "Active") count = counts["ActiveView"] ?? 0;
+                    if (opt == "Deleted") count = counts["DeletedView"] ?? 0;
+                  } else if (label == "Time") {
+                    count = -1; // No badge count for time filter row if not needed
                   }
-                },
+
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(
+                        count >= 0 ? "$opt ($count)" : opt,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isSelected ? Colors.white : Colors.black87,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      selected: isSelected,
+                      selectedColor: Colors.red.shade800,
+                      backgroundColor: Colors.grey.shade100,
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (selected) {
+                        setState(() {
+                          if (label == "Status") selectedStatus = opt;
+                          if (label == "Record Type") selectedViewType = opt;
+                          if (label == "Time") {
+                            selectedTimeFrame = opt;
+                            if (opt == "Select Date") {
+                              showDatePicker(
+                                context: context,
+                                initialDate: DateTime.now(),
+                                firstDate: DateTime(2025),
+                                lastDate: DateTime.now(),
+                              ).then((picked) {
+                                if (picked != null) {
+                                  setState(() {
+                                    customDate = picked;
+                                  });
+                                }
+                              });
+                            }
+                          }
+                        });
+                      },
+                    ),
+                  );
+                }).toList(),
               ),
-            );
-          },
-        ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  Widget _buildFilterBar(Map<String, int> counts) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Building dropdown positioned at the top
+          _buildBuildingDropdownRow(),
+          const SizedBox(height: 4),
+          
+          // Status, Record Type, and Time filters underneath
+          _buildFilterRow("Status", _statusOptions, counts),
+          const SizedBox(height: 4),
+          _buildFilterRow("Record Type", ["All", "Active", "Deleted"], counts),
+          _buildFilterRow("Time", ["All", "Today", "Yesterday", "Select Date"], counts),
+        ],
       ),
     );
   }
