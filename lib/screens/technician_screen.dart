@@ -22,7 +22,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   String selectedBuilding = "All";
   String selectedTimeFrame = "All";
   DateTime? customDate;
-
   final List<String> _timeOptions = const ["All", "Today", "Yesterday", "Select Date"];
   
   final List<String> _quickMaterials = const [
@@ -47,7 +46,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     int inProgress = 0;
     int standby = 0;
     int resolved = 0;
-
     for (var c in all) {
       if (c.isDeleted == true) continue;
       if (c.status == "Resolved" || c.status == "Closed by Customer") {
@@ -61,7 +59,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       if (selectedTimeFrame == "Today") matchTime = _isSameDay(c.createdAt, DateTime.now());
       if (selectedTimeFrame == "Yesterday") matchTime = _isSameDay(c.createdAt, DateTime.now().subtract(const Duration(days: 1)));
       if (selectedTimeFrame == "Select Date" && customDate != null) matchTime = _isSameDay(c.createdAt, customDate!);
-
       if (matchBuilding && matchTime) {
         if (c.status == "Pending") pending++;
         if (c.status == "In Progress") inProgress++;
