@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'team_chat_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,14 +10,11 @@ import 'dart:io' as io;
 import '../models/complaint.dart';
 import '../services/complaint_service.dart';
 import 'home_screen.dart';
-
 class TechnicianScreen extends StatefulWidget {
   const TechnicianScreen({super.key});
-
   @override
   State<TechnicianScreen> createState() => _TechnicianScreenState();
 }
-
 class _TechnicianScreenState extends State<TechnicianScreen> {
   String selectedStatus = "All";
   String selectedBuilding = "All";
@@ -39,7 +37,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   ];
   
   final List<String> _statusOptions = ["All", "Pending", "In Progress", "Standby", "Resolved"];
-
   // --- HELPER METHODS FOR ADMIN FILTER SECTION ---
   Map<String, int> _calculateLiveCounts(List<Complaint> all) {
     int pending = 0;
@@ -73,7 +70,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       "Resolved": resolved,
     };
   }
-
   Widget _buildFilterBar(Map<String, int> counts) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -197,21 +193,17 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ),
     );
   }
-
   Future<String> _getTechnicianName() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('user_name') ?? "Unknown Tech";
   }
-
   bool _isSameDay(DateTime d1, DateTime d2) =>
       d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
-
   // --- SAFE IMAGE PICKER FOR WEB & MOBILE ---
   Future<XFile?> _pickImage() async {
     final picker = ImagePicker();
     return await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
   }
-
   // --- INDIVIDUAL ACTIONS ---
   // 1. Start Work
   void _handleStartWorkOnly(BuildContext context, ComplaintService service, Complaint c) async {
@@ -251,7 +243,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
-
   // 2. Before Picture
   void _handleBeforePicture(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
@@ -294,7 +285,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
-
   // 3. Standby
   void _handleStandbyOnly(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
@@ -366,7 +356,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ),
     );
   }
-
   // 4. After Picture
   void _handleAfterPicture(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
@@ -409,7 +398,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
-
   // 5. Technician Signature
   void _handleTechSignature(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
@@ -480,7 +468,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
-
   // 6. Customer Signature
   void _handleCustSignature(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
@@ -551,7 +538,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
-
   // 7. Complete Task
   void _handleCompleteTask(BuildContext context, ComplaintService service, Complaint c) async {
     final materialsController = TextEditingController(text: c.materialsUsed);
@@ -663,9 +649,9 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                   technicianSignatureUrl: c.technicianSignatureUrl,
                   customerSignatureUrl: c.customerSignatureUrl,
                 );
-                
+              
                 await service.updateComplaint(updated);
-                
+              
                 if (!context.mounted) return;
                 Navigator.pop(context); // Loader
                 Navigator.pop(context); // Detail Screen
@@ -682,7 +668,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ),
     );
   }
-
   // --- FLAT HISTORY DIALOG ---
   void _showFlatHistoryDialog(BuildContext context, Complaint currentComplaint, List<Complaint> allComplaints) {
     final twoYearsAgo = DateTime.now().subtract(const Duration(days: 730));
@@ -750,7 +735,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ),
     );
   }
-
   // --- OPEN DETAIL VIEW (ACTION SHEET) ---
   void _openComplaintDetail(BuildContext context, Complaint c, ComplaintService service, List<Complaint> allComplaints) {
     final bool isCompleted = c.status == 'Resolved' || c.status == 'Closed by Customer';
@@ -905,7 +889,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       },
     );
   }
-
   @override
   Widget build(BuildContext context) {
     final service = Provider.of<ComplaintService>(context);
@@ -918,6 +901,14 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
           onPressed: () => HomeScreen.logout(context),
         ),
         actions: [
+          IconButton(
+           icon: const Icon(Icons.chat),
+           tooltip: "Team Chat",
+           onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const TeamChatScreen()),
+           ),
+          ),
           IconButton(
             icon: const Icon(Icons.filter_alt_off),
             onPressed: () => setState(() {

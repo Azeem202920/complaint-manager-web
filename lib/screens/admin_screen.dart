@@ -1,5 +1,6 @@
 import 'config_screen.dart';
 import 'dashboard_screen.dart';
+import 'team_chat_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
@@ -199,7 +200,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
- Future<void> _generateMasterServiceReportPdf(BuildContext context, ComplaintService service, Complaint c) async {
+  Future<void> _generateMasterServiceReportPdf(BuildContext context, ComplaintService service, Complaint c) async {
     List<Complaint> flatHistory = [];
     try {
       final allHistory = await service.getAdminFullHistory().first;
@@ -440,6 +441,14 @@ class _AdminScreenState extends State<AdminScreen> {
         backgroundColor: Colors.red.shade900,
         actions: [
           IconButton(
+           icon: const Icon(Icons.chat),
+           tooltip: "Team Chat",
+           onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const TeamChatScreen()),
+           ),
+          ),
+          IconButton(
             icon: const Icon(Icons.dashboard),
             tooltip: 'Dashboard',
             onPressed: () => _showDashboardPinDialog(context),
@@ -586,7 +595,6 @@ class _AdminScreenState extends State<AdminScreen> {
                   if (label == "Status") isSelected = selectedStatus == opt;
                   if (label == "Record Type") isSelected = selectedViewType == opt;
                   if (label == "Time") isSelected = selectedTimeFrame == opt;
-
                   int count = 0;
                   if (label == "Status") {
                     count = opt == "All" ? (counts["StatusAll"] ?? 0) : (counts[opt] ?? 0);
@@ -597,7 +605,6 @@ class _AdminScreenState extends State<AdminScreen> {
                   } else if (label == "Time") {
                     count = -1; // No badge count for time filter row if not needed
                   }
-
                   return Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: ChoiceChip(
@@ -1002,169 +1009,57 @@ class _AdminScreenState extends State<AdminScreen> {
                   if (c.isDeleted == true) ...[
                     const SizedBox(height: 10),
                     _remarksBox("Deletion Reason", c.deleteRemarks ?? "No reason provided", Colors.red),
-                  ],
-                  if (c.isDeleted != true) ...[
-                    const Divider(height: 30),
-                    _auditHeader("ADMIN OVERRIDE"),
-                    DropdownButtonFormField<String>(
-                      value: currentStatus,
-                      items: _statusOptions.where((e) => e != "All").map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                      onChanged: (v) => setDialogState(() => currentStatus = v!),
-                      decoration: const InputDecoration(labelText: "Change Status", border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(child: TextField(controller: reportNoCtrl, decoration: const InputDecoration(labelText: "Report #", border: OutlineInputBorder()))),
-                        const SizedBox(width: 8),
-                        Expanded(child: TextField(controller: materialsCtrl, decoration: const InputDecoration(labelText: "Materials", border: OutlineInputBorder()))),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      value: currentBuilding,
-                      items: _buildings.where((e) => e != "All").map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
-                      onChanged: (v) => setDialogState(() => currentBuilding = v!),
-                      decoration: InputDecoration(
-                        labelText: "Building", 
-                        border: const OutlineInputBorder(),
-                        helperText: currentBuilding == "Others" ? "Database Name: ${c.buildingName}" : null,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(controller: flatCtrl, decoration: const InputDecoration(labelText: "Flat Number", border: OutlineInputBorder())),
-                    const SizedBox(height: 10),
-                    DropdownButtonFormField<String>(
-                      value: currentType,
-                      items: _complaintTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                      onChanged: (v) => setDialogState(() => currentType = v!),
-                      decoration: const InputDecoration(labelText: "Complaint Type", border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(controller: descCtrl, maxLines: 2, decoration: const InputDecoration(labelText: "Edit Description", border: OutlineInputBorder())),
                   ]
                 ],
               ),
             ),
           ),
           actions: [
-            if (c.isDeleted == true)
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade800, foregroundColor: Colors.white),
-                onPressed: () async {
-                  await service.updateComplaint(c.copyWith(isDeleted: false, deleteRemarks: ""));
-                  Navigator.pop(context);
-                }, 
-                icon: const Icon(Icons.restore),
-                label: const Text("RESTORE"),
-              ),
-            if (c.isDeleted != true)
-              TextButton(onPressed: () => _showDeleteConfirm(context, service, c), child: const Text("DELETE", style: TextStyle(color: Colors.red))),
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("CLOSE")),
-            if (c.isDeleted != true)
-              ElevatedButton(
-                onPressed: () async {
-                  String finalBuilding = (currentBuilding == "Others") ? c.buildingName : currentBuilding;
-                  List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
-                  if (c.status != currentStatus) {
-                    updatedLogs.add({
-                      'timestamp': DateTime.now().toIso8601String(),
-                      'status': currentStatus,
-                      'userName': 'Admin Override',
-                      'remarks': 'Status changed from ${c.status} to $currentStatus'
-                    });
-                  }
-                  await service.updateComplaint(c.copyWith(
-                    buildingName: finalBuilding,
-                    flatNumber: flatCtrl.text.trim(),
-                    complaintType: currentType,
-                    description: descCtrl.text.trim(),
-                    status: currentStatus,
-                    serviceReportNumber: reportNoCtrl.text.trim(),
-                    materialsUsed: materialsCtrl.text.trim(),
-                    timelineLogs: updatedLogs,
-                  ));
-                  Navigator.pop(context);
-                },
-                child: const Text("SAVE CHANGES"),
-              )
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("CLOSE"),
+            ),
           ],
         ),
       ),
     );
   }
+
   Widget _auditHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.red.shade900)),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.red)),
     );
   }
-  Widget _auditRow(String label, String val1, String val2) {
+
+  Widget _auditRow(String label1, String val1, String val2) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4, left: 12),
+      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          SizedBox(width: 90, child: Text("$label:", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
-          Expanded(child: Text("$val1 ($val2)", style: const TextStyle(fontSize: 11))),
+          Text("$label1: $val1", style: const TextStyle(fontSize: 11)),
+          Text("By: $val2", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
-  Widget _remarksBox(String title, String content, MaterialColor color) {
+
+  Widget _remarksBox(String label, String content, MaterialColor color) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: color.shade50,
-        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: color.shade200),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: color.shade900)),
-          const SizedBox(height: 4),
+          Text(label, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: color.shade900)),
+          const SizedBox(height: 2),
           Text(content, style: const TextStyle(fontSize: 11)),
-        ],
-      ),
-    );
-  }
-  void _showDeleteConfirm(BuildContext context, ComplaintService service, Complaint c) {
-    final deleteReasonCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Confirm Deletion"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Please provide a reason for deleting this complaint record:"),
-            const SizedBox(height: 10),
-            TextField(
-              controller: deleteReasonCtrl,
-              decoration: const InputDecoration(labelText: "Deletion Reason", border: OutlineInputBorder()),
-              maxLines: 2,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            onPressed: () async {
-              if (deleteReasonCtrl.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter a deletion reason")));
-                return;
-              }
-              await service.updateComplaint(c.copyWith(
-                isDeleted: true,
-                deleteRemarks: deleteReasonCtrl.text.trim(),
-              ));
-              Navigator.pop(context); // Close delete confirm
-              Navigator.pop(context); // Close audit dialog
-            },
-            child: const Text("DELETE RECORD"),
-          ),
         ],
       ),
     );
