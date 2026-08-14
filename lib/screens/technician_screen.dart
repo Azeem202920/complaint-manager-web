@@ -207,36 +207,44 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   bool _isSameDay(DateTime d1, DateTime d2) =>
       d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
 
-  // --- SAFE IMAGE PICKER FOR WEB & MOBILE WITH SELECTION DIALOG ---
+  // --- SAFE IMAGE PICKER FOR WEB & MOBILE ---
   Future<XFile?> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
-    return await picker.pickImage(source: source, imageQuality: 70);
+    try {
+      return await picker.pickImage(source: source, imageQuality: 70);
+    } catch (e) {
+      debugPrint("Error picking image: $e");
+      return null;
+    }
   }
 
-  void _handlePictureSelection(BuildContext context, Function(XFile?) onImagePicked) async {
+  // Show a Selection Dialog to the User
+  Future<XFile?> _handlePictureSelection(BuildContext context) async {
     ImageSource? source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (context) => SafeArea(
         child: Wrap(
           children: [
+            // If on web, opening the camera directly via ImageSource.camera often fails.
+            // You can hide it on web or redirect it to gallery/file upload.
+            if (!kIsWeb)
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Take a Picture'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
             ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Take a Picture'),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Choose from Gallery'),
+              leading: Icon(kIsWeb ? Icons.upload_file : Icons.photo_library),
+              title: Text(kIsWeb ? 'Upload Image from Laptop' : 'Choose from Gallery'),
               onTap: () => Navigator.pop(context, ImageSource.gallery),
             ),
           ],
         ),
       ),
     );
-    if (source == null) return;
-    XFile? pickedFile = await _pickImage(source);
-    if (pickedFile == null) return;
-    onImagePicked(pickedFile);
+    
+    if (source == null) return null;
+    return await _pickImage(source);
   }
 
   // --- INDIVIDUAL ACTIONS ---
@@ -282,45 +290,45 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   // 2. Before Picture
   void _handleBeforePicture(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
-    _handlePictureSelection(context, (pickedFile) async {
-      if (pickedFile == null) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
-      try {
-        String? imageUrl;
-        if (kIsWeb) {
-          Uint8List bytes = await pickedFile.readAsBytes();
-          imageUrl = await service.uploadComplaintImageBytes(bytes, c.id, 'before');
-        } else {
-          imageUrl = await service.uploadComplaintImage(io.File(pickedFile.path), c.id, 'before');
-        }
-        List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
-        updatedLogs.add({
-          'timestamp': DateTime.now().toIso8601String(),
-          'status': c.status,
-          'userName': techName,
-          'remarks': 'Before picture attached'
-        });
-        Complaint updated = c.copyWith(
-          beforeImageUrl: imageUrl,
-          timelineLogs: updatedLogs,
-        );
-        
-        await service.updateComplaint(updated);
-        
-        if (!context.mounted) return;
-        Navigator.pop(context); // Pop loader
-        Navigator.pop(context); // Pop details screen
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Before picture uploaded successfully!")));
-      } catch (e) {
-        if (!context.mounted) return;
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    XFile? pickedFile = await _handlePictureSelection(context);
+    if (pickedFile == null) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      String? imageUrl;
+      if (kIsWeb) {
+        Uint8List bytes = await pickedFile.readAsBytes();
+        imageUrl = await service.uploadComplaintImageBytes(bytes, c.id, 'before');
+      } else {
+        imageUrl = await service.uploadComplaintImage(io.File(pickedFile.path), c.id, 'before');
       }
-    });
+      List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
+      updatedLogs.add({
+        'timestamp': DateTime.now().toIso8601String(),
+        'status': c.status,
+        'userName': techName,
+        'remarks': 'Before picture attached'
+      });
+      Complaint updated = c.copyWith(
+        beforeImageUrl: imageUrl,
+        timelineLogs: updatedLogs,
+      );
+      
+      await service.updateComplaint(updated);
+      
+      if (!context.mounted) return;
+      Navigator.pop(context); // Pop loader
+      Navigator.pop(context); // Pop details screen
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Before picture uploaded successfully!")));
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    }
   }
 
   // 3. Standby
@@ -398,45 +406,45 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   // 4. After Picture
   void _handleAfterPicture(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
-    _handlePictureSelection(context, (pickedFile) async {
-      if (pickedFile == null) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
-      try {
-        String? afterImgUrl;
-        if (kIsWeb) {
-          Uint8List bytes = await pickedFile.readAsBytes();
-          afterImgUrl = await service.uploadComplaintImageBytes(bytes, c.id, 'after');
-        } else {
-          afterImgUrl = await service.uploadComplaintImage(io.File(pickedFile.path), c.id, 'after');
-        }
-        List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
-        updatedLogs.add({
-          'timestamp': DateTime.now().toIso8601String(),
-          'status': c.status,
-          'userName': techName,
-          'remarks': 'After picture attached'
-        });
-        Complaint updated = c.copyWith(
-          afterImageUrl: afterImgUrl,
-          timelineLogs: updatedLogs,
-        );
-        
-        await service.updateComplaint(updated);
-        
-        if (!context.mounted) return;
-        Navigator.pop(context); // Pop loader
-        Navigator.pop(context); // Pop details screen
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("After picture uploaded successfully!")));
-      } catch (e) {
-        if (!context.mounted) return;
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    XFile? pickedFile = await _handlePictureSelection(context);
+    if (pickedFile == null) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      String? afterImgUrl;
+      if (kIsWeb) {
+        Uint8List bytes = await pickedFile.readAsBytes();
+        afterImgUrl = await service.uploadComplaintImageBytes(bytes, c.id, 'after');
+      } else {
+        afterImgUrl = await service.uploadComplaintImage(io.File(pickedFile.path), c.id, 'after');
       }
-    });
+      List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
+      updatedLogs.add({
+        'timestamp': DateTime.now().toIso8601String(),
+        'status': c.status,
+        'userName': techName,
+        'remarks': 'After picture attached'
+      });
+      Complaint updated = c.copyWith(
+        afterImageUrl: afterImgUrl,
+        timelineLogs: updatedLogs,
+      );
+      
+      await service.updateComplaint(updated);
+      
+      if (!context.mounted) return;
+      Navigator.pop(context); // Pop loader
+      Navigator.pop(context); // Pop details screen
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("After picture uploaded successfully!")));
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    }
   }
 
   // 5. Technician Signature
@@ -1030,39 +1038,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                                     if (isStandby) Text("Reason: ${c.standbyReason}", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
                                     if (isCompleted && c.finalRemarks.isNotEmpty)
                                       Text("Remarks: ${c.finalRemarks}", style: const TextStyle(color: Colors.green, fontSize: 12)),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(DateFormat('dd MMM, hh:mm a').format(c.createdAt), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                        OutlinedButton.icon(
-                                          style: OutlinedButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                                            minimumSize: const Size(0, 28),
-                                            side: BorderSide(color: Colors.orange.shade800),
-                                          ),
-                                          icon: Icon(Icons.history, size: 14, color: Colors.orange.shade800),
-                                          label: Text("Flat History", style: TextStyle(fontSize: 11, color: Colors.orange.shade800)),
-                                          onPressed: () => _showFlatHistoryDialog(context, c, all),
-                                        ),
-                                      ],
-                                    ),
                                   ],
-                                ),
-                                trailing: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: isCompleted ? Colors.grey.shade200 : (isStandby ? Colors.orange.shade100 : Colors.blue.shade100),
-                                    borderRadius: BorderRadius.circular(4)
-                                  ),
-                                  child: Text(
-                                    c.status,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: isCompleted ? Colors.grey.shade700 : (isStandby ? Colors.orange.shade800 : Colors.blue.shade800)
-                                    ),
-                                  ),
                                 ),
                               ),
                             ),
