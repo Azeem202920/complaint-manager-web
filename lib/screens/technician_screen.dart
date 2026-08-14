@@ -220,22 +220,22 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
 
   // Show a Selection Dialog to the User
   Future<XFile?> _handlePictureSelection(BuildContext context) async {
+    // Check if it's running on a mobile browser (Chrome/Safari on phone)
+    // kIsWeb is true for all browsers, but we can check platform or allow camera option anyway.
+    // Modern mobile browsers handle ImageSource.camera by opening the phone camera directly.
     ImageSource? source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (context) => SafeArea(
         child: Wrap(
           children: [
-            // If on web, opening the camera directly via ImageSource.camera often fails.
-            // You can hide it on web or redirect it to gallery/file upload.
-            if (!kIsWeb)
-              ListTile(
-                leading: const Icon(Icons.camera_alt),
-                title: const Text('Take a Picture'),
-                onTap: () => Navigator.pop(context, ImageSource.camera),
-              ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Take a Picture'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
             ListTile(
               leading: Icon(kIsWeb ? Icons.upload_file : Icons.photo_library),
-              title: Text(kIsWeb ? 'Upload Image from Laptop' : 'Choose from Gallery'),
+              title: Text(kIsWeb ? 'Choose File / Gallery' : 'Choose from Gallery'),
               onTap: () => Navigator.pop(context, ImageSource.gallery),
             ),
           ],
@@ -246,7 +246,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     if (source == null) return null;
     return await _pickImage(source);
   }
-
   // --- INDIVIDUAL ACTIONS ---
   // 1. Start Work
   void _handleStartWorkOnly(BuildContext context, ComplaintService service, Complaint c) async {
