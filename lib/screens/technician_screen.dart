@@ -10,11 +10,14 @@ import 'dart:io' as io;
 import '../models/complaint.dart';
 import '../services/complaint_service.dart';
 import 'home_screen.dart';
+
 class TechnicianScreen extends StatefulWidget {
   const TechnicianScreen({super.key});
+
   @override
   State<TechnicianScreen> createState() => _TechnicianScreenState();
 }
+
 class _TechnicianScreenState extends State<TechnicianScreen> {
   String selectedStatus = "All";
   String selectedBuilding = "All";
@@ -37,6 +40,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   ];
   
   final List<String> _statusOptions = ["All", "Pending", "In Progress", "Standby", "Resolved"];
+
   // --- HELPER METHODS FOR ADMIN FILTER SECTION ---
   Map<String, int> _calculateLiveCounts(List<Complaint> all) {
     int pending = 0;
@@ -70,6 +74,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       "Resolved": resolved,
     };
   }
+
   Widget _buildFilterBar(Map<String, int> counts) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -193,17 +198,47 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ),
     );
   }
+
   Future<String> _getTechnicianName() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('user_name') ?? "Unknown Tech";
   }
+
   bool _isSameDay(DateTime d1, DateTime d2) =>
       d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
-  // --- SAFE IMAGE PICKER FOR WEB & MOBILE ---
-  Future<XFile?> _pickImage() async {
+
+  // --- SAFE IMAGE PICKER FOR WEB & MOBILE WITH SELECTION DIALOG ---
+  Future<XFile?> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
-    return await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
+    return await picker.pickImage(source: source, imageQuality: 70);
   }
+
+  void _handlePictureSelection(BuildContext context, Function(XFile?) onImagePicked) async {
+    ImageSource? source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Take a Picture'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from Gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    XFile? pickedFile = await _pickImage(source);
+    if (pickedFile == null) return;
+    onImagePicked(pickedFile);
+  }
+
   // --- INDIVIDUAL ACTIONS ---
   // 1. Start Work
   void _handleStartWorkOnly(BuildContext context, ComplaintService service, Complaint c) async {
@@ -243,48 +278,51 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
+
   // 2. Before Picture
   void _handleBeforePicture(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
-    XFile? pickedFile = await _pickImage();
-    if (pickedFile == null) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    try {
-      String? imageUrl;
-      if (kIsWeb) {
-        Uint8List bytes = await pickedFile.readAsBytes();
-        imageUrl = await service.uploadComplaintImageBytes(bytes, c.id, 'before');
-      } else {
-        imageUrl = await service.uploadComplaintImage(io.File(pickedFile.path), c.id, 'before');
-      }
-      List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
-      updatedLogs.add({
-        'timestamp': DateTime.now().toIso8601String(),
-        'status': c.status,
-        'userName': techName,
-        'remarks': 'Before picture attached'
-      });
-      Complaint updated = c.copyWith(
-        beforeImageUrl: imageUrl,
-        timelineLogs: updatedLogs,
+    _handlePictureSelection(context, (pickedFile) async {
+      if (pickedFile == null) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
       );
-      
-      await service.updateComplaint(updated);
-      
-      if (!context.mounted) return;
-      Navigator.pop(context); // Pop loader
-      Navigator.pop(context); // Pop details screen
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Before picture uploaded successfully!")));
-    } catch (e) {
-      if (!context.mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-    }
+      try {
+        String? imageUrl;
+        if (kIsWeb) {
+          Uint8List bytes = await pickedFile.readAsBytes();
+          imageUrl = await service.uploadComplaintImageBytes(bytes, c.id, 'before');
+        } else {
+          imageUrl = await service.uploadComplaintImage(io.File(pickedFile.path), c.id, 'before');
+        }
+        List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
+        updatedLogs.add({
+          'timestamp': DateTime.now().toIso8601String(),
+          'status': c.status,
+          'userName': techName,
+          'remarks': 'Before picture attached'
+        });
+        Complaint updated = c.copyWith(
+          beforeImageUrl: imageUrl,
+          timelineLogs: updatedLogs,
+        );
+        
+        await service.updateComplaint(updated);
+        
+        if (!context.mounted) return;
+        Navigator.pop(context); // Pop loader
+        Navigator.pop(context); // Pop details screen
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Before picture uploaded successfully!")));
+      } catch (e) {
+        if (!context.mounted) return;
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    });
   }
+
   // 3. Standby
   void _handleStandbyOnly(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
@@ -356,48 +394,51 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ),
     );
   }
+
   // 4. After Picture
   void _handleAfterPicture(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
-    XFile? pickedFile = await _pickImage();
-    if (pickedFile == null) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    try {
-      String? afterImgUrl;
-      if (kIsWeb) {
-        Uint8List bytes = await pickedFile.readAsBytes();
-        afterImgUrl = await service.uploadComplaintImageBytes(bytes, c.id, 'after');
-      } else {
-        afterImgUrl = await service.uploadComplaintImage(io.File(pickedFile.path), c.id, 'after');
-      }
-      List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
-      updatedLogs.add({
-        'timestamp': DateTime.now().toIso8601String(),
-        'status': c.status,
-        'userName': techName,
-        'remarks': 'After picture attached'
-      });
-      Complaint updated = c.copyWith(
-        afterImageUrl: afterImgUrl,
-        timelineLogs: updatedLogs,
+    _handlePictureSelection(context, (pickedFile) async {
+      if (pickedFile == null) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
       );
-      
-      await service.updateComplaint(updated);
-      
-      if (!context.mounted) return;
-      Navigator.pop(context); // Pop loader
-      Navigator.pop(context); // Pop details screen
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("After picture uploaded successfully!")));
-    } catch (e) {
-      if (!context.mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-    }
+      try {
+        String? afterImgUrl;
+        if (kIsWeb) {
+          Uint8List bytes = await pickedFile.readAsBytes();
+          afterImgUrl = await service.uploadComplaintImageBytes(bytes, c.id, 'after');
+        } else {
+          afterImgUrl = await service.uploadComplaintImage(io.File(pickedFile.path), c.id, 'after');
+        }
+        List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
+        updatedLogs.add({
+          'timestamp': DateTime.now().toIso8601String(),
+          'status': c.status,
+          'userName': techName,
+          'remarks': 'After picture attached'
+        });
+        Complaint updated = c.copyWith(
+          afterImageUrl: afterImgUrl,
+          timelineLogs: updatedLogs,
+        );
+        
+        await service.updateComplaint(updated);
+        
+        if (!context.mounted) return;
+        Navigator.pop(context); // Pop loader
+        Navigator.pop(context); // Pop details screen
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("After picture uploaded successfully!")));
+      } catch (e) {
+        if (!context.mounted) return;
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    });
   }
+
   // 5. Technician Signature
   void _handleTechSignature(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
@@ -468,6 +509,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
+
   // 6. Customer Signature
   void _handleCustSignature(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
@@ -538,6 +580,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
+
   // 7. Complete Task
   void _handleCompleteTask(BuildContext context, ComplaintService service, Complaint c) async {
     final materialsController = TextEditingController(text: c.materialsUsed);
@@ -668,6 +711,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ),
     );
   }
+
   // --- FLAT HISTORY DIALOG ---
   void _showFlatHistoryDialog(BuildContext context, Complaint currentComplaint, List<Complaint> allComplaints) {
     final twoYearsAgo = DateTime.now().subtract(const Duration(days: 730));
@@ -735,6 +779,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       ),
     );
   }
+
   // --- OPEN DETAIL VIEW (ACTION SHEET) ---
   void _openComplaintDetail(BuildContext context, Complaint c, ComplaintService service, List<Complaint> allComplaints) {
     final bool isCompleted = c.status == 'Resolved' || c.status == 'Closed by Customer';
@@ -889,6 +934,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       },
     );
   }
+
   @override
   Widget build(BuildContext context) {
     final service = Provider.of<ComplaintService>(context);
@@ -1009,10 +1055,14 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                                     color: isCompleted ? Colors.grey.shade200 : (isStandby ? Colors.orange.shade100 : Colors.blue.shade100),
                                     borderRadius: BorderRadius.circular(4)
                                   ),
-                                  child: Text(c.status, style: TextStyle(
-                                    color: isCompleted ? Colors.grey.shade700 : (isStandby ? Colors.orange.shade900 : Colors.blue.shade900),
-                                    fontWeight: FontWeight.bold, fontSize: 11
-                                  )),
+                                  child: Text(
+                                    c.status,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: isCompleted ? Colors.grey.shade700 : (isStandby ? Colors.orange.shade800 : Colors.blue.shade800)
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
