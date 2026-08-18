@@ -1,15 +1,25 @@
+import 'dart:io' as io;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'team_chat_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:signature/signature.dart';
-import 'dart:io' as io;
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'team_chat_screen.dart';
+import 'home_screen.dart';
 import '../models/complaint.dart';
 import '../services/complaint_service.dart';
-import 'home_screen.dart';
+
+Future<bool> _requestCameraPermission() async {
+  var status = await Permission.camera.status;
+  if (!status.isGranted) {
+    status = await Permission.camera.request();
+  }
+  return status.isGranted;
+}
 
 class TechnicianScreen extends StatefulWidget {
   const TechnicianScreen({super.key});
@@ -23,6 +33,10 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   String selectedBuilding = "All";
   String selectedTimeFrame = "All";
   DateTime? customDate;
+  
+  // State key to force full widget tree rebuild / refresh on demand
+  Key _refreshKey = UniqueKey();
+
   final List<String> _timeOptions = const ["All", "Today", "Yesterday", "Select Date"];
   
   final List<String> _quickMaterials = const [
@@ -41,7 +55,42 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   
   final List<String> _statusOptions = ["All", "Pending", "In Progress", "Standby", "Resolved"];
 
-  // --- HELPER METHODS FOR ADMIN FILTER SECTION ---
+  /// Compresses image bytes to prevent main-isolate bottlenecks / web browser freezing
+  Future<Uint8List?> _compressImageBytes(Uint8List list) async {
+    try {
+      var result = await FlutterImageCompress.compressWithList(
+        list,
+        minHeight: 800,
+        minWidth: 800,
+        quality: 85,
+      );
+      return result;
+    } catch (e) {
+      debugPrint("Compression error: $e");
+      return list;
+    }
+  }
+
+  /// Determines if a resolved complaint belongs to the active "day cycle" 
+  /// where day rolls over at 02:00 AM.
+  bool _isWithinActiveResolvedWindow(DateTime createdAt) {
+    final now = DateTime.now();
+    
+    // Define cutoff for today at 2:00 AM
+    DateTime cutoffToday = DateTime(now.year, now.month, now.day, 2, 0, 0);
+    
+    DateTime effectiveBoundary;
+    if (now.isBefore(cutoffToday)) {
+      // If it's currently before 2:00 AM, the active window started yesterday at 2:00 AM
+      effectiveBoundary = cutoffToday.subtract(const Duration(days: 1));
+    } else {
+      // If it's 2:00 AM or later, the active window started today at 2:00 AM
+      effectiveBoundary = cutoffToday;
+    }
+
+    return createdAt.isAfter(effectiveBoundary) || createdAt.isAtSameMomentAs(effectiveBoundary);
+  }
+
   Map<String, int> _calculateLiveCounts(List<Complaint> all) {
     int pending = 0;
     int inProgress = 0;
@@ -50,7 +99,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     for (var c in all) {
       if (c.isDeleted == true) continue;
       if (c.status == "Resolved" || c.status == "Closed by Customer") {
-        if (!_isSameDay(c.createdAt, DateTime.now())) {
+        if (!_isWithinActiveResolvedWindow(c.createdAt)) {
           continue;
         }
       }
@@ -96,9 +145,10 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                     child: DropdownButton<String>(
                       value: selectedBuilding,
                       isExpanded: true,
+                      hint: const Text("Building: All", style: TextStyle(fontSize: 12)),
                       items: _buildings.map((b) => DropdownMenuItem(
                         value: b,
-                        child: Text(b, style: const TextStyle(fontSize: 12)),
+                        child: Text(b == "All" ? "Building: All" : b, style: const TextStyle(fontSize: 12)),
                       )).toList(),
                       onChanged: (val) => setState(() => selectedBuilding = val ?? "All"),
                     ),
@@ -119,9 +169,10 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                     child: DropdownButton<String>(
                       value: selectedTimeFrame,
                       isExpanded: true,
+                      hint: const Text("Time: All", style: TextStyle(fontSize: 12)),
                       items: _timeOptions.map((t) => DropdownMenuItem(
                         value: t,
-                        child: Text(t, style: const TextStyle(fontSize: 12)),
+                        child: Text(t == "All" ? "Time: All" : t, style: const TextStyle(fontSize: 12)),
                       )).toList(),
                       onChanged: (val) async {
                         if (val == "Select Date") {
@@ -207,22 +258,17 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   bool _isSameDay(DateTime d1, DateTime d2) =>
       d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
 
-  // --- SAFE IMAGE PICKER FOR WEB & MOBILE ---
   Future<XFile?> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
     try {
-      return await picker.pickImage(source: source, imageQuality: 70);
+      return await picker.pickImage(source: source, imageQuality: 85);
     } catch (e) {
       debugPrint("Error picking image: $e");
       return null;
     }
   }
 
-  // Show a Selection Dialog to the User
   Future<XFile?> _handlePictureSelection(BuildContext context) async {
-    // Check if it's running on a mobile browser (Chrome/Safari on phone)
-    // kIsWeb is true for all browsers, but we can check platform or allow camera option anyway.
-    // Modern mobile browsers handle ImageSource.camera by opening the phone camera directly.
     ImageSource? source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (context) => SafeArea(
@@ -246,8 +292,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     if (source == null) return null;
     return await _pickImage(source);
   }
-  // --- INDIVIDUAL ACTIONS ---
-  // 1. Start Work
+
   void _handleStartWorkOnly(BuildContext context, ComplaintService service, Complaint c) async {
     bool isCompleted = c.status == 'Resolved' || c.status == 'Closed by Customer';
     if (isCompleted) return;
@@ -276,8 +321,8 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       await service.updateComplaint(updated);
       
       if (!context.mounted) return;
-      Navigator.pop(context); // Pop loader
-      Navigator.pop(context); // Pop details screen
+      Navigator.pop(context);
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Work started successfully!")));
     } catch (e) {
       if (!context.mounted) return;
@@ -286,7 +331,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     }
   }
 
-  // 2. Before Picture
   void _handleBeforePicture(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
     XFile? pickedFile = await _handlePictureSelection(context);
@@ -299,11 +343,15 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     );
     try {
       String? imageUrl;
+      Uint8List bytes = await pickedFile.readAsBytes();
+      Uint8List? compressedBytes = await _compressImageBytes(bytes);
+      final finalBytes = compressedBytes ?? bytes;
+
       if (kIsWeb) {
-        Uint8List bytes = await pickedFile.readAsBytes();
-        imageUrl = await service.uploadComplaintImageBytes(bytes, c.id, 'before');
+        imageUrl = await service.uploadComplaintImageBytes(finalBytes, c.id, 'before');
       } else {
-        imageUrl = await service.uploadComplaintImage(io.File(pickedFile.path), c.id, 'before');
+        // Fallback compression save or bytes upload
+        imageUrl = await service.uploadComplaintImageBytes(finalBytes, c.id, 'before');
       }
       List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
       updatedLogs.add({
@@ -320,8 +368,8 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       await service.updateComplaint(updated);
       
       if (!context.mounted) return;
-      Navigator.pop(context); // Pop loader
-      Navigator.pop(context); // Pop details screen
+      Navigator.pop(context);
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Before picture uploaded successfully!")));
     } catch (e) {
       if (!context.mounted) return;
@@ -330,7 +378,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     }
   }
 
-  // 3. Standby
   void _handleStandbyOnly(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
     final reasonController = TextEditingController();
@@ -386,8 +433,8 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                 await service.updateComplaint(updated);
                 
                 if (!context.mounted) return;
-                Navigator.pop(context); // Pop loader
-                Navigator.pop(context); // Pop details screen
+                Navigator.pop(context);
+                Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Complaint marked as Standby")));
               } catch (e) {
                 if (!context.mounted) return;
@@ -402,7 +449,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     );
   }
 
-  // 4. After Picture
   void _handleAfterPicture(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
     XFile? pickedFile = await _handlePictureSelection(context);
@@ -415,11 +461,14 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     );
     try {
       String? afterImgUrl;
+      Uint8List bytes = await pickedFile.readAsBytes();
+      Uint8List? compressedBytes = await _compressImageBytes(bytes);
+      final finalBytes = compressedBytes ?? bytes;
+
       if (kIsWeb) {
-        Uint8List bytes = await pickedFile.readAsBytes();
-        afterImgUrl = await service.uploadComplaintImageBytes(bytes, c.id, 'after');
+        afterImgUrl = await service.uploadComplaintImageBytes(finalBytes, c.id, 'after');
       } else {
-        afterImgUrl = await service.uploadComplaintImage(io.File(pickedFile.path), c.id, 'after');
+        afterImgUrl = await service.uploadComplaintImageBytes(finalBytes, c.id, 'after');
       }
       List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
       updatedLogs.add({
@@ -436,8 +485,8 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       await service.updateComplaint(updated);
       
       if (!context.mounted) return;
-      Navigator.pop(context); // Pop loader
-      Navigator.pop(context); // Pop details screen
+      Navigator.pop(context);
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("After picture uploaded successfully!")));
     } catch (e) {
       if (!context.mounted) return;
@@ -446,7 +495,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     }
   }
 
-  // 5. Technician Signature
   void _handleTechSignature(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
     final SignatureController techSigController = SignatureController(
@@ -507,8 +555,8 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       await service.updateComplaint(updated);
       
       if (!context.mounted) return;
-      Navigator.pop(context); // Pop loader
-      Navigator.pop(context); // Pop details screen
+      Navigator.pop(context);
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Technician signature saved!")));
     } catch (e) {
       if (!context.mounted) return;
@@ -517,7 +565,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     }
   }
 
-  // 6. Customer Signature
   void _handleCustSignature(BuildContext context, ComplaintService service, Complaint c) async {
     String techName = await _getTechnicianName();
     final SignatureController custSigController = SignatureController(
@@ -578,8 +625,8 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       await service.updateComplaint(updated);
       
       if (!context.mounted) return;
-      Navigator.pop(context); // Pop loader
-      Navigator.pop(context); // Pop details screen
+      Navigator.pop(context);
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Customer signature saved!")));
     } catch (e) {
       if (!context.mounted) return;
@@ -588,7 +635,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     }
   }
 
-  // 7. Complete Task
   void _handleCompleteTask(BuildContext context, ComplaintService service, Complaint c) async {
     final materialsController = TextEditingController(text: c.materialsUsed);
     final remarksController = TextEditingController(text: c.finalRemarks);
@@ -703,8 +749,8 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                 await service.updateComplaint(updated);
               
                 if (!context.mounted) return;
-                Navigator.pop(context); // Loader
-                Navigator.pop(context); // Detail Screen
+                Navigator.pop(context);
+                Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Task completed successfully!")));
               } catch (e) {
                 if (!context.mounted) return;
@@ -719,7 +765,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     );
   }
 
-  // --- FLAT HISTORY DIALOG ---
   void _showFlatHistoryDialog(BuildContext context, Complaint currentComplaint, List<Complaint> allComplaints) {
     final twoYearsAgo = DateTime.now().subtract(const Duration(days: 730));
     final flatHistory = allComplaints.where((c) {
@@ -787,7 +832,6 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     );
   }
 
-  // --- OPEN DETAIL VIEW (ACTION SHEET) ---
   void _openComplaintDetail(BuildContext context, Complaint c, ComplaintService service, List<Complaint> allComplaints) {
     final bool isCompleted = c.status == 'Resolved' || c.status == 'Closed by Customer';
     
@@ -836,14 +880,13 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                 const SizedBox(height: 6),
                 Text("Description: ${c.description.isNotEmpty ? c.description : 'No description provided'}"),
                 
-                if (c.status == 'In Progress' || c.status == 'Standby' || isCompleted) ...[
-                  const SizedBox(height: 6),
-                  Text("Technician: ${c.technicianName != null && c.technicianName!.isNotEmpty ? c.technicianName : 'Unassigned'}", 
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-                ],
                 if (c.status == 'Standby' && c.standbyReason.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text("Standby Reason: ${c.standbyReason}", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                ],
+                if (c.status == 'Standby' && c.standbyBy != null && c.standbyBy!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text("Standby Tech: ${c.standbyBy}", style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
                 ],
                 if (isCompleted && c.finalRemarks.isNotEmpty) ...[
                   const SizedBox(height: 6),
@@ -946,6 +989,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   Widget build(BuildContext context) {
     final service = Provider.of<ComplaintService>(context);
     return Scaffold(
+      key: _refreshKey,
       appBar: AppBar(
         title: const Text("Technician Portal"),
         backgroundColor: Colors.orange.shade800,
@@ -954,6 +998,21 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
           onPressed: () => HomeScreen.logout(context),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: "Hot Reload / Full Refresh",
+            onPressed: () {
+              setState(() {
+                _refreshKey = UniqueKey();
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Portal Refreshed"),
+                  duration: Duration(milliseconds: 800),
+                ),
+              );
+            },
+          ),
           IconButton(
            icon: const Icon(Icons.chat),
            tooltip: "Team Chat",
@@ -990,7 +1049,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                     final filteredList = all.where((c) {
                       if (c.isDeleted == true) return false;
                       if (c.status == "Resolved" || c.status == "Closed by Customer") {
-                        if (!_isSameDay(c.createdAt, DateTime.now())) {
+                        if (!_isWithinActiveResolvedWindow(c.createdAt)) {
                           return false;
                         }
                       }
@@ -1031,13 +1090,39 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                                         overflow: TextOverflow.ellipsis, 
                                         style: TextStyle(color: Colors.blueGrey.shade700, fontSize: 12, fontStyle: FontStyle.italic)
                                       ),
-                                    if (c.status != "Pending" && c.status != "Resolved" && c.status != "Closed by Customer")
-                                       Text("Tech: ${c.technicianName ?? c.standbyBy ?? 'Assigned'}", 
-                                          style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
-                                    if (isStandby) Text("Reason: ${c.standbyReason}", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
+                                    if (isStandby && c.standbyBy != null && c.standbyBy!.isNotEmpty)
+                                       Text("Standby Tech: ${c.standbyBy}", 
+                                         style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.w900, fontSize: 12)),
+                                    if (isStandby && c.standbyReason.isNotEmpty) 
+                                      Text("Reason: ${c.standbyReason}", style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 12)),
                                     if (isCompleted && c.finalRemarks.isNotEmpty)
-                                      Text("Remarks: ${c.finalRemarks}", style: const TextStyle(color: Colors.green, fontSize: 12)),
+                                      Text("Remarks: ${c.finalRemarks}", style: const TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w600)),
                                   ],
+                                ),
+                                trailing: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: isCompleted 
+                                        ? Colors.green.shade100 
+                                        : (isStandby ? Colors.orange.shade100 : Colors.blue.shade100),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: isCompleted 
+                                          ? Colors.green 
+                                          : (isStandby ? Colors.orange : Colors.blue),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    c.status,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: isCompleted 
+                                          ? Colors.green.shade800 
+                                          : (isStandby ? Colors.orange.shade800 : Colors.blue.shade800),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),

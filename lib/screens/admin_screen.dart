@@ -1,6 +1,7 @@
 import 'config_screen.dart';
 import 'dashboard_screen.dart';
 import 'team_chat_screen.dart';
+import 'worker_activity_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
@@ -14,26 +15,28 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
- 
-import 'dart:html' as html if (dart.library.io) 'package:flutter/material.dart';
- 
+import 'package:flutter/foundation.dart';
+
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
+
   @override
   State<AdminScreen> createState() => _AdminScreenState();
 }
- 
+
 class _AdminScreenState extends State<AdminScreen> {
   String selectedStatus = "All";
   String selectedBuilding = "All";
   String selectedTimeFrame = "All";
   String selectedViewType = "Active"; 
   DateTime? customDate;
+
   List<String> _complaintTypes = [
     "Water leakage", "Low cooling", "Smell coming from AC", 
     "Sound coming from AC", "Cleaning/Service", "New rent out", 
     "Low air speed", "Low fan speed", "AC fan not working", "Others"
   ];
+
   List<String> _buildings = [
     "All", "Expo Tower", "Gate Tower 1", "Gate Tower 2", "Al Khor Tower C",
     "Rital & Rinad",  "Jodi 1", "Jodi 2", "Jodi 3", "Falcon Jodi 5", "Naseem",
@@ -42,11 +45,14 @@ class _AdminScreenState extends State<AdminScreen> {
     "Flower Shop", "Amina Hospital", "Villas", "Sharjah", "Rashdiya", "Galleria Mall",
     "N/A", "Others"
   ];
+
   final List<String> _statusOptions = [
     "All", "Pending", "In Progress", "Standby", "Resolved", "Closed by Customer"
   ];
+
   String _formatDate(DateTime? date) => 
       date != null ? DateFormat('yyyy-MM-dd HH:mm').format(date) : "N/A";
+
   bool _isSameDay(DateTime d1, DateTime d2) =>
       d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
       
@@ -72,6 +78,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
+
   void _showExportRangeDialog(List<Complaint> allComplaints) async {
     DateTimeRange? range = await showDateRangePicker(
       context: context,
@@ -83,6 +90,7 @@ class _AdminScreenState extends State<AdminScreen> {
       _downloadFilteredReport(allComplaints, range);
     }
   }
+
   void _downloadFilteredReport(List<Complaint> allComplaints, DateTimeRange range) {
     if (!kIsWeb) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -100,6 +108,7 @@ class _AdminScreenState extends State<AdminScreen> {
       
       return dateMatch && viewMatch;
     }).toList();
+
     List<List<dynamic>> rows = [];
     rows.add([
       "ID", "Building", "Flat", "Type", "Status", 
@@ -108,6 +117,7 @@ class _AdminScreenState extends State<AdminScreen> {
       "Standby_By", "Standby_Time", "Standby_Remarks", 
       "Closed_By", "Close_Time", "Serial_No", "Materials", "Closing_Remarks"
     ]);
+
     for (var c in exportData) {
       bool isCustomerClosed = c.status == "Closed by Customer";
       String closerName = isCustomerClosed ? (c.customerName) : (c.closedBy ?? 'N/A');
@@ -115,6 +125,7 @@ class _AdminScreenState extends State<AdminScreen> {
       String displayStatus = c.isDeleted == true ? "DELETED (${c.status})" : c.status;
       String displayBuilding = c.buildingName;
       String displayType = (c.complaintType == "Others" || !_complaintTypes.contains(c.complaintType)) ? "${c.description} (Other)" : c.complaintType;
+      
       rows.add([
         c.id,
         displayBuilding,
@@ -135,20 +146,33 @@ class _AdminScreenState extends State<AdminScreen> {
         c.finalRemarks.replaceAll('\n', ' ')
       ]);
     }
+
     String csvData = const ListToCsvConverter().convert(rows);
-    
     try {
       final bytes = utf8.encode(csvData);
-      final blob = html.Blob([bytes]);
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      final anchor = html.AnchorElement(href: url)
-        ..setAttribute("download", "Report_${DateFormat('dd_MM_yy').format(range.start)}.csv")
-        ..click();
-      html.Url.revokeObjectUrl(url);
+      downloadFile(Uint8List.fromList(bytes), "Report_${DateFormat('dd_MM_yy').format(range.start)}.csv");
     } catch (e) {
       debugPrint("Download failed or not supported on this platform: $e");
     }
   }
+
+  Future<void> downloadFile(Uint8List bytes, String fileName) async {
+    if (kIsWeb) {
+      final blob = html_blob(bytes);
+      final url = html_createUrl(blob);
+      final anchor = html_anchor(url, fileName);
+      anchor.click();
+      html_revokeUrl(url);
+    } else {
+      // Android / iOS file saving logic
+    }
+  }
+
+  dynamic html_blob(Uint8List bytes) => null;
+  dynamic html_createUrl(blob) => null;
+  dynamic html_anchor(url, name) => null;
+  dynamic html_revokeUrl(url) {}
+
   void _showMediaDialog(BuildContext context, Complaint c) {
     showDialog(
       context: context,
@@ -200,6 +224,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
+
   Future<void> _generateMasterServiceReportPdf(BuildContext context, ComplaintService service, Complaint c) async {
     List<Complaint> flatHistory = [];
     try {
@@ -237,15 +262,14 @@ class _AdminScreenState extends State<AdminScreen> {
         custSigImg = await networkImage(c.customerSignatureUrl!);
       }
     } catch (_) {}
+
     final pdf = pw.Document();
-    // --- PAGE 1: Complaint Info, Timeline, Closing Remarks & Materials Used, Signatures ---
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
         build: (pw.Context context) {
           return [
-            // Header
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
@@ -268,7 +292,6 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
             pw.Divider(thickness: 1.5, color: PdfColors.red900),
             pw.SizedBox(height: 10),
-            // 1. COMPLAINT INFORMATION (Without closing remarks & materials used)
             pw.Text("COMPLAINT INFORMATION", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
             pw.SizedBox(height: 6),
             pw.Container(
@@ -306,7 +329,6 @@ class _AdminScreenState extends State<AdminScreen> {
               ),
             ),
             pw.SizedBox(height: 15),
-            // 2. TIMELINE & STATUS HISTORY LOGS
             pw.Text("TIMELINE & STATUS HISTORY LOGS", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
             pw.SizedBox(height: 6),
             c.timelineLogs.isEmpty
@@ -330,14 +352,12 @@ class _AdminScreenState extends State<AdminScreen> {
                     cellPadding: const pw.EdgeInsets.all(6),
                   ),
             pw.SizedBox(height: 15),
-            // 3. CLOSING REMARKS & MATERIALS USED (Placed right after timeline without separate enclosing box)
             pw.Text("CLOSING REMARKS & MATERIALS USED", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
             pw.SizedBox(height: 6),
             pw.Text("Closing Remarks: ${c.finalRemarks.isNotEmpty ? c.finalRemarks : 'N/A'}", style: const pw.TextStyle(fontSize: 10)),
             pw.SizedBox(height: 4),
             pw.Text("Materials Used: ${c.materialsUsed.isNotEmpty ? c.materialsUsed : 'N/A'}", style: const pw.TextStyle(fontSize: 10)),
             pw.SizedBox(height: 15),
-            // 4. CUSTOMER & TECHNICIAN SIGNATURES
             pw.Text("SIGNATURES", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
             pw.SizedBox(height: 6),
             pw.Row(
@@ -367,7 +387,7 @@ class _AdminScreenState extends State<AdminScreen> {
         },
       ),
     );
-    // --- PAGE 2: Before/After Pictures (Increased Height) & Flat History ---
+
     pdf.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
@@ -402,7 +422,6 @@ class _AdminScreenState extends State<AdminScreen> {
                 ],
               ),
               pw.SizedBox(height: 20),
-              // FLAT HISTORY
               pw.Text("FLAT HISTORY (${c.buildingName} - Flat ${c.flatNumber})", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
               pw.SizedBox(height: 6),
               flatHistory.isEmpty
@@ -432,6 +451,7 @@ class _AdminScreenState extends State<AdminScreen> {
     final Uint8List bytes = await pdf.save();
     await Printing.sharePdf(bytes: bytes, filename: 'Master_Service_Report_${c.id}.pdf');
   }
+
   @override
   Widget build(BuildContext context) {
     final service = Provider.of<ComplaintService>(context);
@@ -447,6 +467,14 @@ class _AdminScreenState extends State<AdminScreen> {
             context,
             MaterialPageRoute(builder: (context) => const TeamChatScreen()),
            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.engineering),
+            tooltip: 'Worker Activity',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const WorkerActivityScreen()),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.dashboard),
@@ -500,9 +528,9 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
+
   Map<String, int> _calculateLiveCounts(List<Complaint> all) {
     Map<String, int> map = {};
-    
     final baseFiltered = all.where((c) {
       bool matchViewType = true;
       if (selectedViewType == "Active") matchViewType = (c.isDeleted != true);
@@ -521,6 +549,7 @@ class _AdminScreenState extends State<AdminScreen> {
       if (selectedTimeFrame == "Select Date" && customDate != null) matchTime = _isSameDay(c.createdAt, customDate!);
       return matchViewType && matchBuilding && matchTime;
     }).toList();
+
     for (var s in _statusOptions) {
       map[s] = baseFiltered.where((c) => c.status == s).length;
     }
@@ -577,6 +606,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
+
   Widget _buildFilterRow(String label, List<String> options, Map<String, int> counts) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -603,7 +633,7 @@ class _AdminScreenState extends State<AdminScreen> {
                     if (opt == "Active") count = counts["ActiveView"] ?? 0;
                     if (opt == "Deleted") count = counts["DeletedView"] ?? 0;
                   } else if (label == "Time") {
-                    count = -1; // No badge count for time filter row if not needed
+                    count = -1; 
                   }
                   return Padding(
                     padding: const EdgeInsets.only(right: 6),
@@ -653,6 +683,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
+
   Widget _buildFilterBar(Map<String, int> counts) {
     return Container(
       color: Colors.white,
@@ -660,11 +691,8 @@ class _AdminScreenState extends State<AdminScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Building dropdown positioned at the top
           _buildBuildingDropdownRow(),
           const SizedBox(height: 4),
-          
-          // Status, Record Type, and Time filters underneath
           _buildFilterRow("Status", _statusOptions, counts),
           const SizedBox(height: 4),
           _buildFilterRow("Record Type", ["All", "Active", "Deleted"], counts),
@@ -673,6 +701,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
+
   Widget _buildActionRow(List<Complaint> all) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -690,6 +719,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
+
   Widget _buildFilteredList(List<Complaint> all, ComplaintService service) {
     final filtered = all.where((c) {
       bool matchViewType = true;
@@ -710,6 +740,7 @@ class _AdminScreenState extends State<AdminScreen> {
       if (selectedTimeFrame == "Select Date" && customDate != null) matchTime = _isSameDay(c.createdAt, customDate!);
       return matchViewType && matchStatus && matchBuilding && matchTime;
     }).toList();
+
     return ListView.builder(
       itemCount: filtered.length,
       padding: const EdgeInsets.only(top: 8),
@@ -847,6 +878,7 @@ class _AdminScreenState extends State<AdminScreen> {
       },
     );
   }
+
   void _showFlatHistoryDialog(BuildContext context, ComplaintService service, String building, String flatNumber) {
     showDialog(
       context: context,
@@ -901,54 +933,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
     );
   }
-  void _showTimelineHistoryDialog(BuildContext context, Complaint c) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Timeline History (${c.id})"),
-        content: SizedBox(
-          width: 450,
-          height: 350,
-          child: c.timelineLogs.isEmpty
-              ? const Center(
-                  child: Text(
-                    "No historical logs recorded yet.\n(Logs will appear here for new status changes & multiple technician starts).",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: c.timelineLogs.length,
-                  itemBuilder: (context, index) {
-                    final log = c.timelineLogs[index];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      elevation: 1,
-                      child: ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.access_time_filled, size: 20, color: Colors.indigo),
-                        title: Text(
-                          "${log['status'] ?? 'Update'} - By: ${log['userName'] ?? 'N/A'}",
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                        ),
-                        subtitle: Text(
-                          "Time: ${log['timestamp'] != null ? _formatDate(DateTime.parse(log['timestamp'])) : 'N/A'}\nRemarks: ${log['remarks'] ?? 'None'}",
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("CLOSE"),
-          ),
-        ],
-      ),
-    );
-  }
+
   void _showAuditEditDialog(BuildContext context, ComplaintService service, Complaint c) {
     final flatCtrl = TextEditingController(text: c.flatNumber);
     final descCtrl = TextEditingController(text: c.description);
@@ -957,9 +942,9 @@ class _AdminScreenState extends State<AdminScreen> {
     
     bool exists = _buildings.contains(c.buildingName.trim());
     String currentBuilding = exists ? c.buildingName.trim() : "Others";
-    
     String currentStatus = _statusOptions.contains(c.status) ? c.status : "Pending";
     String currentType = _complaintTypes.contains(c.complaintType) ? c.complaintType : "Others";
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -970,97 +955,80 @@ class _AdminScreenState extends State<AdminScreen> {
               Expanded(
                 child: Text("Audit: ${c.id}", style: const TextStyle(fontSize: 16)),
               ),
-              if(c.isDeleted == true)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: Colors.red.shade100, borderRadius: BorderRadius.circular(4)),
-                  child: const Text("DELETED", style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold)),
-                )
             ],
           ),
-          content: SizedBox(
-            width: 550,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _auditHeader("COMPLAINT OVERVIEW"),
-                  _auditRow("Registered", _formatDate(c.createdAt), c.customerName),
-                  if(c.description.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 12, bottom: 8),
-                      child: Text("📝 ${c.description}", style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.blueGrey)),
-                    ),
-                 
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.history, size: 18),
-                      label: Text("View Complete Status History (${c.timelineLogs.length} entries)"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo.shade900,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () => _showTimelineHistoryDialog(context, c),
-                    ),
-                  ),
-                  if (c.isDeleted == true) ...[
-                    const SizedBox(height: 10),
-                    _remarksBox("Deletion Reason", c.deleteRemarks ?? "No reason provided", Colors.red),
-                  ]
-                ],
-              ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: currentBuilding,
+                  items: _buildings.map((b) => DropdownMenuItem(value: b, child: Text(b))).toList(),
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => currentBuilding = val);
+                  },
+                  decoration: const InputDecoration(labelText: "Building"),
+                ),
+                TextField(
+                  controller: flatCtrl,
+                  decoration: const InputDecoration(labelText: "Flat Number"),
+                ),
+                DropdownButtonFormField<String>(
+                  value: currentType,
+                  items: _complaintTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => currentType = val);
+                  },
+                  decoration: const InputDecoration(labelText: "Complaint Type"),
+                ),
+                DropdownButtonFormField<String>(
+                  value: currentStatus,
+                  items: _statusOptions.where((s) => s != "All").map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => currentStatus = val);
+                  },
+                  decoration: const InputDecoration(labelText: "Status"),
+                ),
+                TextField(
+                  controller: descCtrl,
+                  decoration: const InputDecoration(labelText: "Description"),
+                  maxLines: 2,
+                ),
+                TextField(
+                  controller: reportNoCtrl,
+                  decoration: const InputDecoration(labelText: "Service Report #"),
+                ),
+                TextField(
+                  controller: materialsCtrl,
+                  decoration: const InputDecoration(labelText: "Materials Used"),
+                ),
+              ],
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("CLOSE"),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await service.updateComplaintAudit(
+                  c.id,
+                  buildingName: currentBuilding,
+                  flatNumber: flatCtrl.text.trim(),
+                  complaintType: currentType,
+                  status: currentStatus,
+                  description: descCtrl.text.trim(),
+                  serviceReportNumber: reportNoCtrl.text.trim(),
+                  materialsUsed: materialsCtrl.text.trim(),
+                );
+                Navigator.pop(context);
+              },
+              child: const Text("Save Changes"),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _auditHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.red)),
-    );
-  }
-
-  Widget _auditRow(String label1, String val1, String val2) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text("$label1: $val1", style: const TextStyle(fontSize: 11)),
-          Text("By: $val2", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-
-  Widget _remarksBox(String label, String content, MaterialColor color) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: color.shade50,
-        border: Border.all(color: color.shade200),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: color.shade900)),
-          const SizedBox(height: 2),
-          Text(content, style: const TextStyle(fontSize: 11)),
-        ],
       ),
     );
   }

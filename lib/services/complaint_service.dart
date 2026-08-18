@@ -49,13 +49,39 @@ class ComplaintService extends ChangeNotifier {
   }
 
   // --- DIAGNOSTIC & STATUS METHODS ---
-
   Future<void> testFirestoreConnection() async {
     try {
       await _db.collection(collectionPath).limit(1).get();
       debugPrint("Firestore connection test successful.");
     } catch (e) {
       debugPrint("Firestore connection test failed: $e");
+    }
+  }
+
+  Future<void> updateComplaintAudit(
+    String complaintId, {
+    required String buildingName,
+    required String flatNumber,
+    required String complaintType,
+    required String status,
+    required String description,
+    required String serviceReportNumber,
+    required String materialsUsed,
+  }) async {
+    try {
+      await _db.collection(collectionPath).doc(complaintId).update({
+        'buildingName': buildingName,
+        'flatNumber': flatNumber,
+        'complaintType': complaintType,
+        'status': status,
+        'description': description,
+        'serviceReportNumber': serviceReportNumber,
+        'materialsUsed': materialsUsed,
+      });
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Error updating complaint audit: $e");
+      rethrow;
     }
   }
 
@@ -95,11 +121,18 @@ class ComplaintService extends ChangeNotifier {
       return null;
     }
   }
+
   Future<String?> uploadComplaintImageBytes(Uint8List bytes, String complaintId, String type) async {
-  final ref = FirebaseStorage.instance.ref().child('complaints/$complaintId/${type}_${DateTime.now().millisecondsSinceEpoch}.jpg');
-  final uploadTask = await ref.putData(bytes);
-  return await uploadTask.ref.getDownloadURL();
+    try {
+      final ref = _storage.ref().child('complaints/$complaintId/${type}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final uploadTask = await ref.putData(bytes);
+      return await uploadTask.ref.getDownloadURL();
+    } catch (e) {
+      debugPrint("Error uploading image bytes: $e");
+      return null;
+    }
   }
+
   Future<String?> uploadSignatureBytes(Uint8List signatureBytes, String complaintId, String sigType) async {
     try {
       final ref = _storage.ref().child('complaints/$complaintId/${sigType}_${DateTime.now().millisecondsSinceEpoch}.png');
