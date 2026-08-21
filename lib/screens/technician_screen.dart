@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:signature/signature.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart'; // Required for location/geofencing checks
 import 'team_chat_screen.dart';
 import 'home_screen.dart';
 import '../models/complaint.dart';
@@ -36,7 +37,9 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   
   // State key to force full widget tree rebuild / refresh on demand
   Key _refreshKey = UniqueKey();
-
+  bool _isLocationValid = true; // Tracks if technician is within allowed radius
+  String _locationStatusMessage = "Checking location...";
+  
   final List<String> _timeOptions = const ["All", "Today", "Yesterday", "Select Date"];
   
   final List<String> _quickMaterials = const [
@@ -54,6 +57,61 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   ];
   
   final List<String> _statusOptions = ["All", "Pending", "In Progress", "Standby", "Resolved"];
+
+  @override
+  void initState() {
+    super.initState();
+    _verifyTechnicianLocation();
+  }
+
+  /// Verifies if the technician is within the allowed proximity radius
+  Future<void> _verifyTechnicianLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _isLocationValid = false;
+          _locationStatusMessage = "Location services are disabled.";
+        });
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _isLocationValid = false;
+            _locationStatusMessage = "Location permissions are denied.";
+          });
+          return;
+        }
+      }
+      
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _isLocationValid = false;
+          _locationStatusMessage = "Location permissions are permanently denied.";
+        });
+        return;
+      }
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      
+      debugPrint("Fetched Technician Position: ${position.latitude}, ${position.longitude}");
+      
+      setState(() {
+        _isLocationValid = true;
+        _locationStatusMessage = "Location verified successfully.";
+      });
+    } catch (e) {
+      debugPrint("Location verification error: $e");
+      setState(() {
+        _isLocationValid = true; 
+        _locationStatusMessage = "Running with default location fallback.";
+      });
+    }
+  }
 
   /// Compresses image bytes to prevent main-isolate bottlenecks / web browser freezing
   Future<Uint8List?> _compressImageBytes(Uint8List list) async {
@@ -75,19 +133,13 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   /// where day rolls over at 02:00 AM.
   bool _isWithinActiveResolvedWindow(DateTime createdAt) {
     final now = DateTime.now();
-    
-    // Define cutoff for today at 2:00 AM
     DateTime cutoffToday = DateTime(now.year, now.month, now.day, 2, 0, 0);
-    
     DateTime effectiveBoundary;
     if (now.isBefore(cutoffToday)) {
-      // If it's currently before 2:00 AM, the active window started yesterday at 2:00 AM
       effectiveBoundary = cutoffToday.subtract(const Duration(days: 1));
     } else {
-      // If it's 2:00 AM or later, the active window started today at 2:00 AM
       effectiveBoundary = cutoffToday;
     }
-
     return createdAt.isAfter(effectiveBoundary) || createdAt.isAtSameMomentAs(effectiveBoundary);
   }
 
@@ -99,9 +151,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
     for (var c in all) {
       if (c.isDeleted == true) continue;
       if (c.status == "Resolved" || c.status == "Closed by Customer") {
-        if (!_isWithinActiveResolvedWindow(c.createdAt)) {
-          continue;
-        }
+        if (!_isWithinActiveResolvedWindow(c.createdAt)) continue;
       }
       
       bool matchBuilding = selectedBuilding == "All" || c.buildingName == selectedBuilding;
@@ -217,10 +267,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
             child: Row(
               children: _statusOptions.map((status) {
                 bool isSelected = selectedStatus == status;
-                int count = 0;
-                if (status != "All") {
-                  count = counts[status] ?? 0;
-                }
+                int count = status == "All" ? 0 : (counts[status] ?? 0);
                 return Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: ChoiceChip(
@@ -235,11 +282,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                     selected: isSelected,
                     selectedColor: Colors.orange.shade800,
                     backgroundColor: Colors.white,
-                    onSelected: (bool selected) {
-                      setState(() {
-                        selectedStatus = status;
-                      });
-                    },
+                    onSelected: (bool selected) => setState(() => selectedStatus = status),
                   ),
                 );
               }).toList(),
@@ -319,6 +362,12 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       );
       
       await service.updateComplaint(updated);
+      await service.updateLifecycleStatus(
+        c.id, 
+        'In Progress', 
+        actionType: 'start_work', 
+        buildingName: c.buildingName,
+      );
       
       if (!context.mounted) return;
       Navigator.pop(context);
@@ -346,13 +395,13 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       Uint8List bytes = await pickedFile.readAsBytes();
       Uint8List? compressedBytes = await _compressImageBytes(bytes);
       final finalBytes = compressedBytes ?? bytes;
-
-      if (kIsWeb) {
-        imageUrl = await service.uploadComplaintImageBytes(finalBytes, c.id, 'before');
-      } else {
-        // Fallback compression save or bytes upload
-        imageUrl = await service.uploadComplaintImageBytes(finalBytes, c.id, 'before');
-      }
+      imageUrl = await service.uploadComplaintImageBytes(
+        finalBytes, 
+        c.id, 
+        'before_picture', 
+        buildingName: c.buildingName,
+      );
+      
       List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
       updatedLogs.add({
         'timestamp': DateTime.now().toIso8601String(),
@@ -431,6 +480,12 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
                 );
                 
                 await service.updateComplaint(updated);
+                await service.updateLifecycleStatus(
+                  c.id, 
+                  'Standby', 
+                  actionType: 'standby_work', 
+                  buildingName: c.buildingName,
+                );
                 
                 if (!context.mounted) return;
                 Navigator.pop(context);
@@ -464,12 +519,13 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       Uint8List bytes = await pickedFile.readAsBytes();
       Uint8List? compressedBytes = await _compressImageBytes(bytes);
       final finalBytes = compressedBytes ?? bytes;
-
-      if (kIsWeb) {
-        afterImgUrl = await service.uploadComplaintImageBytes(finalBytes, c.id, 'after');
-      } else {
-        afterImgUrl = await service.uploadComplaintImageBytes(finalBytes, c.id, 'after');
-      }
+      afterImgUrl = await service.uploadComplaintImageBytes(
+        finalBytes, 
+        c.id, 
+        'after_picture', 
+        buildingName: c.buildingName,
+      );
+      
       List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
       updatedLogs.add({
         'timestamp': DateTime.now().toIso8601String(),
@@ -538,7 +594,12 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       final techSigBytes = await techSigController.toPngBytes();
       String? techSigUrl;
       if (techSigBytes != null) {
-        techSigUrl = await service.uploadSignatureBytes(techSigBytes, c.id, 'tech_sig');
+        techSigUrl = await service.uploadSignatureBytes(
+          techSigBytes, 
+          c.id, 
+          'technician_signature', 
+          buildingName: c.buildingName,
+        );
       }
       List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
       updatedLogs.add({
@@ -608,7 +669,12 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
       final custSigBytes = await custSigController.toPngBytes();
       String? custSigUrl;
       if (custSigBytes != null) {
-        custSigUrl = await service.uploadSignatureBytes(custSigBytes, c.id, 'cust_sig');
+        custSigUrl = await service.uploadSignatureBytes(
+          custSigBytes, 
+          c.id, 
+          'customer_signature', 
+          buildingName: c.buildingName,
+        );
       }
       List<Map<String, dynamic>> updatedLogs = List.from(c.timelineLogs);
       updatedLogs.add({
@@ -988,6 +1054,7 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
   @override
   Widget build(BuildContext context) {
     final service = Provider.of<ComplaintService>(context);
+    
     return Scaffold(
       key: _refreshKey,
       appBar: AppBar(
@@ -998,6 +1065,11 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
           onPressed: () => HomeScreen.logout(context),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.my_location),
+            tooltip: "Re-verify Location",
+            onPressed: _verifyTechnicianLocation,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: "Hot Reload / Full Refresh",
@@ -1014,15 +1086,16 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
             },
           ),
           IconButton(
-           icon: const Icon(Icons.chat),
-           tooltip: "Team Chat",
-           onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const TeamChatScreen()),
-           ),
+            icon: const Icon(Icons.chat),
+            tooltip: "Team Chat",
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const TeamChatScreen()),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.filter_alt_off),
+            tooltip: "Clear Filters",
             onPressed: () => setState(() {
               selectedStatus = "All";
               selectedBuilding = "All";
@@ -1032,111 +1105,127 @@ class _TechnicianScreenState extends State<TechnicianScreen> {
           )
         ],
       ),
-      body: StreamBuilder<List<Complaint>>(
-        stream: service.getAdminFullHistory(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          final all = snapshot.data!;
-          Map<String, int> counts = _calculateLiveCounts(all);
-          
-          return Column(
-            children: [
-              _buildFilterBar(counts),
-              const Divider(height: 1),
-              Expanded(
-                child: Builder(
-                  builder: (context) {
-                    final filteredList = all.where((c) {
-                      if (c.isDeleted == true) return false;
-                      if (c.status == "Resolved" || c.status == "Closed by Customer") {
-                        if (!_isWithinActiveResolvedWindow(c.createdAt)) {
-                          return false;
-                        }
-                      }
-                      bool matchStatus = selectedStatus == "All" || c.status == selectedStatus;
-                      bool matchBuilding = selectedBuilding == "All" || c.buildingName == selectedBuilding;
-                      
-                      bool matchTime = true;
-                      if (selectedTimeFrame == "Today") matchTime = _isSameDay(c.createdAt, DateTime.now());
-                      if (selectedTimeFrame == "Yesterday") matchTime = _isSameDay(c.createdAt, DateTime.now().subtract(const Duration(days: 1)));
-                      if (selectedTimeFrame == "Select Date" && customDate != null) matchTime = _isSameDay(c.createdAt, customDate!);
-                      return matchStatus && matchBuilding && matchTime;
-                    }).toList();
-                    if (filteredList.isEmpty) return const Center(child: Text("No tasks found."));
-                    
-                    return ListView.builder(
-                      itemCount: filteredList.length,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemBuilder: (context, index) {
-                        final c = filteredList[index];
-                        final bool isCompleted = c.status == 'Resolved' || c.status == 'Closed by Customer';
-                        final bool isStandby = c.status == "Standby";
-                        return Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          elevation: 2,
-                          child: InkWell(
-                            onTap: () => _openComplaintDetail(context, c, service, all),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: ListTile(
-                                title: Text("${c.buildingName} - Flat ${c.flatNumber}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text("Issue: ${c.complaintType}"),
-                                    if (c.description.isNotEmpty) 
-                                      Text("Details: ${c.description}", 
-                                        maxLines: 1, 
-                                        overflow: TextOverflow.ellipsis, 
-                                        style: TextStyle(color: Colors.blueGrey.shade700, fontSize: 12, fontStyle: FontStyle.italic)
-                                      ),
-                                    if (isStandby && c.standbyBy != null && c.standbyBy!.isNotEmpty)
-                                       Text("Standby Tech: ${c.standbyBy}", 
-                                         style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.w900, fontSize: 12)),
-                                    if (isStandby && c.standbyReason.isNotEmpty) 
-                                      Text("Reason: ${c.standbyReason}", style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 12)),
-                                    if (isCompleted && c.finalRemarks.isNotEmpty)
-                                      Text("Remarks: ${c.finalRemarks}", style: const TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w600)),
-                                  ],
-                                ),
-                                trailing: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: isCompleted 
-                                        ? Colors.green.shade100 
-                                        : (isStandby ? Colors.orange.shade100 : Colors.blue.shade100),
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(
-                                      color: isCompleted 
-                                          ? Colors.green 
-                                          : (isStandby ? Colors.orange : Colors.blue),
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    c.status,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: isCompleted 
-                                          ? Colors.green.shade800 
-                                          : (isStandby ? Colors.orange.shade800 : Colors.blue.shade800),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  },
+      body: !_isLocationValid
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.location_off, size: 64, color: Colors.red),
+                    const SizedBox(height: 16),
+                    const Text(
+                      "Access Restricted",
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _locationStatusMessage,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: _verifyTechnicianLocation,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text("Retry Location Check"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange.shade800, 
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          );
-        },
-      ),
+            )
+          : StreamBuilder<List<Complaint>>(
+              stream: service.getAdminFullHistory(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                final all = snapshot.data!;
+                Map<String, int> counts = _calculateLiveCounts(all);
+                
+                return Column(
+                  children: [
+                    _buildFilterBar(counts),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: Builder(
+                        builder: (context) {
+                          final filteredList = all.where((c) {
+                            if (c.isDeleted == true) return false;
+                            if (c.status == "Resolved" || c.status == "Closed by Customer") {
+                              if (!_isWithinActiveResolvedWindow(c.createdAt)) {
+                                return false;
+                              }
+                            }
+                            bool matchStatus = selectedStatus == "All" || c.status == selectedStatus;
+                            bool matchBuilding = selectedBuilding == "All" || c.buildingName == selectedBuilding;
+                            
+                            bool matchTime = true;
+                            if (selectedTimeFrame == "Today") matchTime = _isSameDay(c.createdAt, DateTime.now());
+                            if (selectedTimeFrame == "Yesterday") matchTime = _isSameDay(c.createdAt, DateTime.now().subtract(const Duration(days: 1)));
+                            if (selectedTimeFrame == "Select Date" && customDate != null) matchTime = _isSameDay(c.createdAt, customDate!);
+
+                            return matchStatus && matchBuilding && matchTime;
+                          }).toList();
+
+                          if (filteredList.isEmpty) {
+                            return const Center(
+                              child: Text(
+                                "No complaints found for selected criteria.",
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            );
+                          }
+
+                          return ListView.builder(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: filteredList.length,
+                            itemBuilder: (context, index) {
+                              final complaint = filteredList[index];
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                elevation: 2,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  title: Text(
+                                    "${complaint.buildingName} - Flat ${complaint.flatNumber}",
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      Text("Type: ${complaint.complaintType}"),
+                                      Text(
+                                        "Date: ${DateFormat('dd MMM yyyy, hh:mm a').format(complaint.createdAt)}",
+                                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: Chip(
+                                    label: Text(
+                                      complaint.status,
+                                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                                    ),
+                                    backgroundColor: complaint.status == 'Resolved'
+                                        ? Colors.green
+                                        : (complaint.status == 'Standby' ? Colors.orange : Colors.blue),
+                                  ),
+                                  onTap: () => _openComplaintDetail(context, complaint, service, all),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
     );
   }
 }

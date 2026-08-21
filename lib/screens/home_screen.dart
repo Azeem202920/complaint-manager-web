@@ -5,11 +5,13 @@ import '../services/complaint_service.dart';
 import 'register_complaint_screen.dart';
 import 'technician_screen.dart';
 import 'admin_screen.dart';
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+
   final String _adminPin = "6693";
   
-  // UPDATED: Added your specific Customer Credentials
+  // Customer Credentials Map
   final Map<String, String> _customerCredentials = const {
     "Customer One": "98765",
     "Customer Two": "43688",
@@ -26,13 +28,7 @@ class HomeScreen extends StatelessWidget {
     "Rana Sb": "9999",
     "Moeen Sb": "8899",
   };
-  final Map<String, String> _technicianCredentials = const {
-    "Charanjeet": "1234", "Noman": "3290", "Raju": "3556",
-    "Usman": "4347", "Aftab": "2545", "Yam Bahadur": "9999",
-    "Asgar": "7536", "Uzair": "7890", "Majid": "5306",
-    "Sunil": "3790", "User": "11234", "Azeem": "6693",
-    "Sir": "3067", "Tanveer": "4066", "Rana Sb": "9999", "Moeen Sb": "8899"
-  };
+
   static Future<void> logout(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear(); 
@@ -47,17 +43,18 @@ class HomeScreen extends StatelessWidget {
       const SnackBar(content: Text("Logged out successfully")),
     );
   }
-  // UPDATED: Customer Login Dialog using Username and Password
+
+  // Customer Login Dialog using Username and Password
   void _showCustomerLoginDialog(BuildContext context) {
     final uController = TextEditingController();
     final pController = TextEditingController();
+
     void submit() async {
       String username = uController.text.trim();
       String password = pController.text.trim();
       if (_customerCredentials.containsKey(username) && _customerCredentials[username] == password) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('user_name', username);
-        // Using password as a placeholder for phone if phone is optional
         await prefs.setString('customer_phone', password); 
         
         if (!context.mounted) return;
@@ -65,7 +62,7 @@ class HomeScreen extends StatelessWidget {
         
         Navigator.push(context, MaterialPageRoute(
           builder: (context) => RegisterComplaintScreen(
-            phoneNumber: password, // Passing password as ID/Phone placeholder
+            phoneNumber: password,
             customerName: username,
           )
         ));
@@ -75,6 +72,7 @@ class HomeScreen extends StatelessWidget {
         );
       }
     }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -105,6 +103,7 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+
   Future<void> _handleTechnicianAccess(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final lastLogin = prefs.getString('tech_last_login');
@@ -121,6 +120,7 @@ class HomeScreen extends StatelessWidget {
     if (!context.mounted) return;
     _showTechLoginDialog(context);
   }
+
   Future<void> _handleAdminAccess(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final lastLogin = prefs.getString('admin_last_login');
@@ -137,28 +137,54 @@ class HomeScreen extends StatelessWidget {
     if (!context.mounted) return;
     _showAdminPinDialog(context);
   }
+
   void _showTechLoginDialog(BuildContext context) {
     final uContent = TextEditingController();
     final pContent = TextEditingController();
+
     void attemptLogin() async {
-      String enteredName = uContent.text.trim(); 
-      if (_technicianCredentials.containsKey(enteredName) && 
-          _technicianCredentials[enteredName] == pContent.text.trim()) {
+      String enteredName = uContent.text.trim();
+      String enteredPassword = pContent.text.trim();
+
+      if (enteredName.isEmpty || enteredPassword.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Please fill in both fields"), backgroundColor: Colors.red),
+        );
+        return;
+      }
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        final complaintService = Provider.of<ComplaintService>(context, listen: false);
         
+        // Authenticate via Firebase Auth & verify Firestore presence/status
+        await complaintService.loginTechnician(enteredName, enteredPassword);
+
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('admin_last_login'); 
         await prefs.setString('tech_last_login', DateTime.now().toIso8601String());
         await prefs.setString('user_name', enteredName); 
         
         if (!context.mounted) return;
-        Navigator.pop(context);
+        Navigator.pop(context); // Pop loading dialog
+        Navigator.pop(context); // Pop login dialog
+        
         Navigator.push(context, MaterialPageRoute(builder: (context) => const TechnicianScreen()));
-      } else {
+      } catch (e) {
+        if (!context.mounted) return;
+        Navigator.pop(context); // Pop loading dialog
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Invalid Credentials"), backgroundColor: Colors.red),
+          SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red),
         );
       }
     }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -169,14 +195,14 @@ class HomeScreen extends StatelessWidget {
             TextField(
               controller: uContent, 
               autofocus: true, 
-              decoration: const InputDecoration(hintText: "Name", border: OutlineInputBorder()),
+              decoration: const InputDecoration(hintText: "Name or Email", border: OutlineInputBorder()),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 10),
             TextField(
               controller: pContent, 
               obscureText: true, 
-              decoration: const InputDecoration(hintText: "PIN", border: OutlineInputBorder()),
+              decoration: const InputDecoration(hintText: "Password / PIN", border: OutlineInputBorder()),
               onSubmitted: (_) => attemptLogin(),
             ),
           ],
@@ -188,8 +214,10 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+
   void _showAdminPinDialog(BuildContext context) {
     final controller = TextEditingController();
+
     void submit() async {
       if (controller.text == _adminPin) {
         final prefs = await SharedPreferences.getInstance();
@@ -206,6 +234,7 @@ class HomeScreen extends StatelessWidget {
         );
       }
     }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -224,13 +253,16 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+
   @override
   Widget build(BuildContext context) {
     final complaintService = Provider.of<ComplaintService>(context, listen: false);
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text("Maintenance App"), 
         centerTitle: true,
+        backgroundColor: Colors.orange.shade800,
         actions: [
           IconButton(
             icon: const Icon(Icons.sync),
@@ -265,6 +297,7 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+
   Widget _buildSmallBtn(BuildContext context, String label, Color color, VoidCallback onTap) {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(

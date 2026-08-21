@@ -10,16 +10,16 @@ import '../services/complaint_service.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:csv/csv.dart';
+// Conditional web import for file downloading
+import 'dart:html' as html;
 // PDF & Printing packages imports
 import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:flutter/foundation.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
-
   @override
   State<AdminScreen> createState() => _AdminScreenState();
 }
@@ -55,7 +55,7 @@ class _AdminScreenState extends State<AdminScreen> {
 
   bool _isSameDay(DateTime d1, DateTime d2) =>
       d1.year == d2.year && d1.month == d2.month && d1.day == d2.day;
-      
+
   void _showDashboardPinDialog(BuildContext context) {
     final controller = TextEditingController();
     void submit() {
@@ -101,11 +101,11 @@ class _AdminScreenState extends State<AdminScreen> {
     final exportData = allComplaints.where((c) {
       bool dateMatch = c.createdAt.isAfter(range.start) && 
                        c.createdAt.isBefore(range.end.add(const Duration(days: 1)));
-      
+
       bool viewMatch = true;
       if (selectedViewType == "Active") viewMatch = (c.isDeleted != true);
       if (selectedViewType == "Deleted") viewMatch = (c.isDeleted == true);
-      
+
       return dateMatch && viewMatch;
     }).toList();
 
@@ -125,7 +125,7 @@ class _AdminScreenState extends State<AdminScreen> {
       String displayStatus = c.isDeleted == true ? "DELETED (${c.status})" : c.status;
       String displayBuilding = c.buildingName;
       String displayType = (c.complaintType == "Others" || !_complaintTypes.contains(c.complaintType)) ? "${c.description} (Other)" : c.complaintType;
-      
+
       rows.add([
         c.id,
         displayBuilding,
@@ -158,20 +158,14 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Future<void> downloadFile(Uint8List bytes, String fileName) async {
     if (kIsWeb) {
-      final blob = html_blob(bytes);
-      final url = html_createUrl(blob);
-      final anchor = html_anchor(url, fileName);
-      anchor.click();
-      html_revokeUrl(url);
-    } else {
-      // Android / iOS file saving logic
+      final blob = html.Blob([bytes]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute("download", fileName)
+        ..click();
+      html.Url.revokeObjectUrl(url);
     }
   }
-
-  dynamic html_blob(Uint8List bytes) => null;
-  dynamic html_createUrl(blob) => null;
-  dynamic html_anchor(url, name) => null;
-  dynamic html_revokeUrl(url) {}
 
   void _showMediaDialog(BuildContext context, Complaint c) {
     showDialog(
@@ -236,12 +230,12 @@ class _AdminScreenState extends State<AdminScreen> {
     } catch (_) {
       flatHistory = [c];
     }
-    
+
     pw.ImageProvider? beforeImg;
     pw.ImageProvider? afterImg;
     pw.ImageProvider? techSigImg;
     pw.ImageProvider? custSigImg;
-    
+
     try {
       if (c.beforeImageUrl != null && c.beforeImageUrl!.isNotEmpty) {
         beforeImg = await networkImage(c.beforeImageUrl!);
@@ -262,7 +256,6 @@ class _AdminScreenState extends State<AdminScreen> {
         custSigImg = await networkImage(c.customerSignatureUrl!);
       }
     } catch (_) {}
-
     final pdf = pw.Document();
     pdf.addPage(
       pw.MultiPage(
@@ -387,7 +380,6 @@ class _AdminScreenState extends State<AdminScreen> {
         },
       ),
     );
-
     pdf.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4,
@@ -447,7 +439,7 @@ class _AdminScreenState extends State<AdminScreen> {
         },
       ),
     );
-    
+
     final Uint8List bytes = await pdf.save();
     await Printing.sharePdf(bytes: bytes, filename: 'Master_Service_Report_${c.id}.pdf');
   }
@@ -461,12 +453,12 @@ class _AdminScreenState extends State<AdminScreen> {
         backgroundColor: Colors.red.shade900,
         actions: [
           IconButton(
-           icon: const Icon(Icons.chat),
-           tooltip: "Team Chat",
-           onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const TeamChatScreen()),
-           ),
+            icon: const Icon(Icons.chat),
+            tooltip: "Team Chat",
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const TeamChatScreen()),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.engineering),
@@ -513,7 +505,7 @@ class _AdminScreenState extends State<AdminScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
           if (!snapshot.hasData) return const Center(child: Text("No data found"));
-          
+
           final all = snapshot.data!;
           Map<String, int> counts = _calculateLiveCounts(all);
           return Column(
@@ -559,7 +551,7 @@ class _AdminScreenState extends State<AdminScreen> {
     map["AllView"] = all.length;
     return map;
   }
-  
+
   Widget _buildBuildingDropdownRow() {
     String safeValue = _buildings.contains(selectedBuilding) ? selectedBuilding : "All";
     return Padding(
@@ -774,6 +766,9 @@ class _AdminScreenState extends State<AdminScreen> {
                       const SizedBox(height: 4),
                       Text("Issue: $displayComplaint"),
                       const SizedBox(height: 2),
+                      Text("Technician: ${c.technicianName != null && c.technicianName!.isNotEmpty ? c.technicianName! : 'Unassigned'}", 
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo.shade800)),
+                      const SizedBox(height: 2),
                       Text("ID: ${c.id}", style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.blueGrey)),
                       if (isStandby) ...[
                         const SizedBox(height: 8),
@@ -897,9 +892,9 @@ class _AdminScreenState extends State<AdminScreen> {
                 return const Center(child: Text("No previous complaints found for this flat."));
               }
               
-              final historyList = snapshot.data!.where((c) => 
-                c.buildingName.trim().toLowerCase() == building.trim().toLowerCase() && 
-                c.flatNumber.trim().toLowerCase() == flatNumber.trim().toLowerCase()
+              final historyList = snapshot.data!.where((item) => 
+                item.buildingName.trim().toLowerCase() == building.trim().toLowerCase() && 
+                item.flatNumber.trim().toLowerCase() == flatNumber.trim().toLowerCase()
               ).toList();
               if (historyList.isEmpty) {
                 return const Center(child: Text("No previous complaints found for this flat."));
@@ -939,12 +934,13 @@ class _AdminScreenState extends State<AdminScreen> {
     final descCtrl = TextEditingController(text: c.description);
     final reportNoCtrl = TextEditingController(text: c.serviceReportNumber);
     final materialsCtrl = TextEditingController(text: c.materialsUsed);
+    final finalRemarksCtrl = TextEditingController(text: c.finalRemarks);
+    final standbyReasonCtrl = TextEditingController(text: c.standbyReason);
     
     bool exists = _buildings.contains(c.buildingName.trim());
     String currentBuilding = exists ? c.buildingName.trim() : "Others";
     String currentStatus = _statusOptions.contains(c.status) ? c.status : "Pending";
     String currentType = _complaintTypes.contains(c.complaintType) ? c.complaintType : "Others";
-
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -1003,6 +999,16 @@ class _AdminScreenState extends State<AdminScreen> {
                   controller: materialsCtrl,
                   decoration: const InputDecoration(labelText: "Materials Used"),
                 ),
+                TextField(
+                  controller: finalRemarksCtrl,
+                  decoration: const InputDecoration(labelText: "Closing / Technician Remarks"),
+                  maxLines: 2,
+                ),
+                TextField(
+                  controller: standbyReasonCtrl,
+                  decoration: const InputDecoration(labelText: "Standby Reason"),
+                  maxLines: 2,
+                ),
               ],
             ),
           ),
@@ -1022,10 +1028,12 @@ class _AdminScreenState extends State<AdminScreen> {
                   description: descCtrl.text.trim(),
                   serviceReportNumber: reportNoCtrl.text.trim(),
                   materialsUsed: materialsCtrl.text.trim(),
+                  finalRemarks: finalRemarksCtrl.text.trim(),
+                  standbyReason: standbyReasonCtrl.text.trim(),
                 );
-                Navigator.pop(context);
+                if (context.mounted) Navigator.pop(context);
               },
-              child: const Text("Save Changes"),
+              child: const Text("Save"),
             ),
           ],
         ),

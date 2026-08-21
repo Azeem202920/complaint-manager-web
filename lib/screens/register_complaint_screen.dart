@@ -92,6 +92,8 @@ class _RegisterComplaintScreenState extends State<RegisterComplaintScreen> with 
               await service.updateLifecycleStatus(
                 c.id,
                 "Closed by Customer",
+                actionType: 'customer_close',
+                buildingName: c.buildingName,
               );
               
               if (mounted) Navigator.pop(context);

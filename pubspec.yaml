@@ -27,10 +27,13 @@ dependencies:
   signature: ^5.5.0
   # Location packages
   google_maps_flutter: ^2.5.0
-  geolocator: ^11.1.0
+  geolocator: ^13.0.2
   # PDF Generation & Printing
   pdf: ^3.10.7
   printing: ^5.13.2
+  # Downloader & Storage Utilities
+  universal_html: ^2.2.4
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
